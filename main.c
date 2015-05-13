@@ -86,6 +86,8 @@ static s64		s_FileDiffHistoMax	=  1e6;		// delat max value
 static s64		s_FileDiffHistoUnit	=  100;		// number of ns each hiso bucket occupies 
 static s64		s_FileDiffHistoCnt	=  0;		// number of buckets 
 
+static u64		s_HashMemory		= kMB(128);	// default hash memory size
+
 //---------------------------------------------------------------------------------------------
 // mmaps a pcap file in full
 static PCAPFile_t* OpenPCAP(char* Path)
@@ -575,6 +577,8 @@ static void print_usage(void)
 	printf(" --file-diff-min       | minimum time delta for histogram. default -1e6 ns\n"); 
 	printf(" --file-diff-max       | maximum time delta for histogram. default 1e6 ns\n"); 
 	printf(" --file-diff-unit      | duration of a single histogram slot. default 100ns\n"); 
+	printf("\n");
+	printf(" --hash-memory         | (int MB) amount of memory to use for hashing. default 128MB\n");
 }
 
 //---------------------------------------------------------------------------------------------
@@ -650,6 +654,12 @@ int main(int argc, char* argv[])
 			s_FileDiffHistoUnit= atoi(argv[i+1]);
 			i+= 1;
 		}
+		// amount of memory to allocate for hash nodes 
+		if (strcmp(argv[i], "--hash-memory") == 0)
+		{
+			s_HashMemory = atoi(argv[i+1])*1024*1024;
+			i+= 1;
+		}
 	}
 
 	// needs atleast 2 files
@@ -689,17 +699,15 @@ int main(int argc, char* argv[])
 	TotalMemory += 	sizeof(void*) * (1<<24);
 
 	s_HashPos 	= 1;
-	s_HashMax 	= 128e6/ sizeof(HashNode_t); 
+	s_HashMax 	= s_HashMemory / sizeof(HashNode_t); 
 	s_HashList 	= (HashNode_t*)malloc(s_HashMax * sizeof(HashNode_t));
 	memset(s_HashList, 0, s_HashMax * sizeof(HashNode_t));
+	printf("HashMemory: %lliMB %i Nodes\n", (s_HashMax * sizeof(HashNode_t)) / kMB(1), s_HashMax );
 
 	// file only histogram
 
-	//s_FileDiffHistoMin = -1e6;
-	//s_FileDiffHistoMax = 1e6;
-	//s_FileDiffHistoUnit = 1; 
-	s_FileDiffHistoCnt = (s_FileDiffHistoMax  - s_FileDiffHistoMin) /  s_FileDiffHistoUnit;
-	s_FileDiffHisto = (u32*)malloc(sizeof(u32) *  s_FileDiffHistoCnt);
+	s_FileDiffHistoCnt 	= (s_FileDiffHistoMax  - s_FileDiffHistoMin) /  s_FileDiffHistoUnit;
+	s_FileDiffHisto 	= (u32*)malloc(sizeof(u32) *  s_FileDiffHistoCnt);
 	memset(s_FileDiffHisto, 0, sizeof(u32) * s_FileDiffHistoCnt);
 
 	while (true)
@@ -784,6 +792,5 @@ int main(int argc, char* argv[])
 
 	if (s_EnableFileDiff) PrintFileDiffHisto();
 }
+
 /* vim: set ts=4 sts=4 */
-
-

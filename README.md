@@ -19,6 +19,8 @@ Options:
   --file-diff-max       | maximum time delta for histogram. default 1e6 ns
   --file-diff-unit      | duration of a single histogram slot. default 100ns
 
+  --hash-memory         | (int MB) amount of memory to use for hashing. default 128MB
+
 ```
 
 ### Examples
