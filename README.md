@@ -21,7 +21,7 @@ Options:
 
 ```
 
-# Examples
+### Examples
 
 1) *Diff 2 PCAP files*
 
