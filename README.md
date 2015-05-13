@@ -21,14 +21,16 @@ Options:
 
 ```
 
-1) Diff 2 PCAP files 
+# Examples
+
+1) *Diff 2 PCAP files*
 
 there are 2 10g packet capture devices, capturing the same lines (e.g. for redundancy). The following searches for each packet in both files and reports the time difference between the 2 files. 
 
 $ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100
 
 
-2) Diff same packets within a single PCAP 
+2) *Diff same packets within a single PCAP*
 
 $ ./pcap_diff  capture.pcap  --tcp-only --packet-trace 
 
