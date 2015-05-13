@@ -5,7 +5,7 @@ An example situation is calculating the latency profile of a switch/or other net
 
 Command line options 
 
-`
+```
 Options:
  --packet-trace        | write each packet events to stdout
  --tcp-length <number> | filter tcp packets to include only payload length of <number>
@@ -19,13 +19,13 @@ Options:
   --file-diff-max       | maximum time delta for histogram. default 1e6 ns
   --file-diff-unit      | duration of a single histogram slot. default 100ns
 
-`
+```
 
 1) Diff 2 PCAP files 
 
 there are 2 10g packet capture devices, capturing the same lines (e.g. for redundancy). The following searches for each packet in both files and reports the time difference between the 2 files. 
 
-` $ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100`
+$ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100
 
 
 2) Diff same packets within a single PCAP 
