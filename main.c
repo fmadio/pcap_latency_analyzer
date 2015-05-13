@@ -777,4 +777,6 @@ int main(int argc, char* argv[])
 
 	if (s_EnableFileDiff) PrintFileDiffHisto();
 }
+/* vim: set ts=4 sts=4 */
+
 
