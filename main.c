@@ -559,7 +559,9 @@ static void PrintFileDiffHisto(void)
 
 static void print_usage(void)
 {
-	printf("pcap_diff: <pcap A> .. <pcap Z>\n");
+	printf("pcap_diff: <pcap A> <pcap B>\n");
+	printf("\n");
+	printf("Version: %s %s\n", __DATE__, __TIME__);
 	printf("\n");
 	printf("Options:\n");
 	printf(" --packet-trace        | write each packet events to stdout\n");
@@ -568,6 +570,11 @@ static void print_usage(void)
 	printf(" --udp-only            | only match udp packets\n"); 
 	printf(" --full-packet         | use entire packet contents for hash (.e.g no protocol)\n"); 
 	printf(" --full-packet-tcp-only  use entire packet contents for hash but only for tcp packets\n"); 
+	printf("\n");
+	printf(" --file-diff           | special mode of comparing packets between 2 files (instead of within the same file)\n");
+	printf(" --file-diff-min       | minimum time delta for histogram. default -1e6 ns\n"); 
+	printf(" --file-diff-max       | maximum time delta for histogram. default 1e6 ns\n"); 
+	printf(" --file-diff-unit      | duration of a single histogram slot. default 100ns\n"); 
 }
 
 //---------------------------------------------------------------------------------------------
