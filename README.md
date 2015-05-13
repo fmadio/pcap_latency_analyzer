@@ -30,7 +30,7 @@ there are 2 10g packet capture devices, capturing the same lines (e.g. for redun
 $ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100
 
 
-2) **Diff same packets within a single PCAP**
+2) **Trace the same packets within a single PCAP**
 
 $ ./pcap_diff  capture.pcap  --tcp-only --packet-trace 
 
