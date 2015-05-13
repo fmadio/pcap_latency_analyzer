@@ -13,30 +13,20 @@ Options:
  --full-packet         | use entire packet contents for hash (.e.g no protocol)
  --full-packet-tcp-only  use entire packet contents for hash but only for tcp packets
 
-Example:
+  --file-diff           | special mode of comparing packets between 2 files (instead of within the same file)
+  --file-diff-min       | minimum time delta for histogram. default -1e6 ns
+  --file-diff-max       | maximum time delta for histogram. default 1e6 ns
+  --file-diff-unit      | duration of a single histogram slot. default 100ns
+
+
+1) Diff 2 PCAP files 
 
 there are 2 10g packet capture devices, capturing the same lines (e.g. for redundancy). The following searches for each packet in both files and reports the time difference between the 2 files. 
 
 $ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100
 
 
-Mean: -1001.927310 ns StdDef: 137.923019 ns Samples:2153531.000000
-HistoMin : -1000000 ns
-HistoMax : 1000000 ns
-HistoUnit: 100 ns
-   -1700 ns :            6 : *
-   -1600 ns :           21 : *
-   -1500 ns :         4260 : *
-   -1400 ns :        53617 : ********
-   -1300 ns :        54177 : ********
-   -1200 ns :       366271 : *******************************************************
-   -1100 ns :       658499 : ***************************************************************************************************
-   -1000 ns :       664778 : ****************************************************************************************************
-    -900 ns :       149816 : **********************
-    -800 ns :       125827 : ******************
-    -700 ns :        75972 : ***********
-    -600 ns :          132 : *
-    -500 ns :          133 : *
+2) Diff same packets within a single PCAP 
 
-
+$ ./pcap_diff  capture.pcap  --tcp-only --packet-trace 
 
