@@ -18,32 +18,8 @@ Example:
 there are 2 10g packet capture devices, capturing the same lines (e.g. for redundancy). The following searches for each packet in both files and reports the time difference between the 2 files. 
 
 $ ./pcap_diff  captureA.pcap  captureB.pcap  --file-diff --full-packet-tcp-only --file-diff-unit 100
-[captureA.pcap] FileSize: 1GB
-[captureB.pcap] FileSize: 1GB
-[0.0000] 0.00M  116 : 0.13GB 1 Matches
-[0.0295] 1.00M   90 : 0.13GB 435974 Matches
-[0.0592] 2.00M  116 : 0.13GB 871579 Matches
-[0.0888] 3.00M   72 : 0.13GB 1307403 Matches
-[0.1435] 4.00M  438 : 0.13GB 1389581 Matches
-[0.2005] 5.00M  438 : 0.13GB 1429501 Matches
-[0.2566] 6.00M  174 : 0.13GB 1473194 Matches
-[0.3125] 7.00M  149 : 0.13GB 1515911 Matches
-[0.3673] 8.00M  174 : 0.13GB 1560914 Matches
-[0.4213] 9.00M   64 : 0.13GB 1607034 Matches
-[0.4742] 10.00M  174 : 0.13GB 1658501 Matches
-[0.5260] 11.00M  116 : 0.13GB 1714027 Matches
-[0.5785] 12.00M  149 : 0.13GB 1769297 Matches
-[0.6314] 13.00M  174 : 0.13GB 1824975 Matches
-[0.6845] 14.00M  146 : 0.13GB 1882150 Matches
-[0.7368] 15.00M  116 : 0.13GB 1940288 Matches
-[0.7893] 16.00M  174 : 0.13GB 1997677 Matches
-[0.8416] 17.00M  234 : 0.13GB 2054285 Matches
-[0.8943] 18.00M  174 : 0.13GB 2107793 Matches
-[0.9472] 19.00M  174 : 0.13GB 2130242 Matches
-[1.0000] 20.00M  174 : 0.13GB 2153539 Matches
 
-Index used: 0.13GB
-nodes allocated: 820207
+
 Mean: -1001.927310 ns StdDef: 137.923019 ns Samples:2153531.000000
 HistoMin : -1000000 ns
 HistoMax : 1000000 ns
