@@ -506,6 +506,8 @@ static void NodeOutput(HashNode_t* N)
 
 				s_FileDiffHisto[Index]++;
 				//printf("%f ns %016llx %016llx\n", dT, TS0, TS1); 
+
+if (dT > 10e3) TracePacket(N);
 			}
 		}
 		// packet was nott in both files
@@ -1119,8 +1121,6 @@ int main(int argc, char* argv[])
 		}
 		if (Done) break;
 
-		fProfile_Start(15, "top");
-
 		for (int FID=0; FID < FileNameListPos; FID++)
 		{
 			PCAPFile_t* PCAP = PCAPFile[FID];
@@ -1233,7 +1233,6 @@ int main(int argc, char* argv[])
 				TotalByte += sizeof(PCAPPacket_t) + Pkt->LengthCapture;
 			}
 		}
-		fProfile_Stop(15);
 
 		if (rdtsc() > NextPrintTSC)
 		{
