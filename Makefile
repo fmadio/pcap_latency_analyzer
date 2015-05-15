@@ -1,5 +1,6 @@
 OBJS =
 OBJS += main.o
+OBJS += murmur3.o 
 
 DEF = 
 DEF += -O3 

@@ -33,11 +33,7 @@ typedef int					s32;
 typedef unsigned long long	u64;
 typedef long long			s64;
 
-typedef struct
-{
-	unsigned long long	hi;
-	unsigned long long	lo;
-} u128;
+typedef unsigned __int128	u128;
 
 #define k1E9 1000000000ULL
 

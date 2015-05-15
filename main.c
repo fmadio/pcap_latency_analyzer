@@ -27,6 +27,7 @@ typedef struct
 {
 	char* Path;				// path to the file
 	char	Name[128];		// short name
+	FILE*	F;				// bufferd io file handle
 	int		fd;				// file handler of the mmap attached data
 	u64		Length;			// exact file length
 	u64		MapLength;		// 4KB aligned mmap length
@@ -36,67 +37,84 @@ typedef struct
 	u64		ReadPos;		// current read pointer
 	u64		PktCnt;			// number of packets processed
 
+	u8*		PacketBuffer;	// temp read buffer
+	bool	Finished;		// read completed
+
 } PCAPFile_t;
 
 #define PKTTYPE_TCP				1			// tcp packet
 #define PKTTYPE_UDP				2			// udp packet
 #define PKTTYPE_FULL			3			// raw entire packet 
 
+#define NODE_DEPTH 		16	
+
 typedef struct
 {
-	PCAPPacket_t*	Pkt[8];			// offset to packet 
-	u8				FID[8];			// which file
+	PCAPPacket_t*	Pkt[NODE_DEPTH];	// offset to packet 
+	u64				TS[NODE_DEPTH];		// timestamp of the packet
+	u8				FID[NODE_DEPTH];	// which file
 
-	u64				Hash;			// exact hash value
-	u32				Next;			// next in hash index
-	u8				Cnt;			// number of hits
-	u16				Length;			// hash length
-	u8				Type;			// what kind of packet it is, tcp/ udp /other etc. 
-									// means dont have parse all the headers each time
+	u128			Hash;				// exact hash value
+	u32				Next;				// next in hash index
+	u32				Prev;				// previous in hash index 
+	u8				Cnt;				// number of hits
+	u16				Length;				// hash length
+	u8				Type;				// what kind of packet it is, tcp/ udp /other etc. 
+
+	u128			MAC;				// mac header
+										// means dont have parse all the headers each time
 	u8				pad[2];
 
-	u32				LRUPrev;		// access linked list. top of the list is more recent 
-	u32				LRUNext;		// 
+	u32				LRUPrev;			// access linked list. top of the list is more recent 
+	u32				LRUNext;			// 
 	u64				LRUTS;		
 
 } HashNode_t;
 
+double TSC2Nano = 0;
+
 //---------------------------------------------------------------------------------------------
 // tunables
 
-static bool		s_EnablePacketTrace	= false;	// verbosely dump all packet traces
-static bool		s_EnableFullHash	= false;	// hash the entire packet 
-static bool		s_EnableFullHashTCP	= false;	// hash the entire packet only for tcp packets
-static bool		s_EnableFullHashUDP	= false;	// hash the entire packet only for udp packets
-static bool		s_EnableFullHashAll	= false;	// hash everything dont inspect 
+static bool		s_EnablePacketTrace	= false;		// verbosely dump all packet traces
+static bool		s_EnableFullHash	= false;		// hash the entire packet 
+static bool		s_EnableFullHashTCP	= false;		// hash the entire packet only for tcp packets
+static bool		s_EnableFullHashUDP	= false;		// hash the entire packet only for udp packets
+static bool		s_EnableFullHashAll	= false;		// hash everything dont inspect 
 
-static int		s_TCPLengthMin	= 64;			// minimum tcp payload length to consider
-static int		s_TCPLengthMax	= 9600;			// minimum tcp payload length to consider
-static bool		s_TCPEnable		= true;			// enable tcp packets to diff
+static int		s_TCPLengthMin		= 64;			// minimum tcp payload length to consider
+static int		s_TCPLengthMax		= 9600;			// minimum tcp payload length to consider
+static bool		s_TCPEnable			= true;			// enable tcp packets to diff
 
-static bool		s_UDPEnable		= true;			// enable udp packets to diff
+static bool		s_UDPEnable			= true;			// enable udp packets to diff
 
-static bool		s_EnableFileDiff	= false;	// special case of diff between 2 files
+static bool		s_EnableFileDiff	= false;		// special case of diff between 2 files
 static bool		s_EnableFileDiffTimeSync = true;	// attempt to time sync the two files for better packet matching
+static bool		s_EnableFileDiffStrict = true;		// means for a single hash node, only 2 entries can exist for it to sample.
+													// file A entry and file B entry
 
-static u64		s_TimeZoneOffset	= 0;		// local machines timezone offset
-static u64		s_HashOverflow		= 0;		// number of hash`s wich oveflow the packet count
+static u64		s_TimeZoneOffset	= 0;			// local machines timezone offset
+static u64		s_HashOverflow		= 0;			// number of hash`s wich oveflow the packet count
+static u64		s_DroppedPkts		= 0;
 
 static double	s_FileDiffSum0		= 0;
 static double	s_FileDiffSum1		= 0;
 static double	s_FileDiffSum2		= 0;
 
 // file diff hisogram 
-static u32*		s_FileDiffHisto		= NULL;		// histgram
-static s64		s_FileDiffHistoMin	= -1e6;		// delat min value 
-static s64		s_FileDiffHistoMax	=  1e6;		// delat max value 
-static s64		s_FileDiffHistoUnit	=  100;		// number of ns each hiso bucket occupies 
-static s64		s_FileDiffHistoCnt	=  0;		// number of buckets 
+static u32*		s_FileDiffHisto		= NULL;			// histgram
+static s64		s_FileDiffHistoMin	= -1e6;			// delat min value 
+static s64		s_FileDiffHistoMax	=  1e6;			// delat max value 
+static s64		s_FileDiffHistoUnit	=  100;			// number of ns each hiso bucket occupies 
+static s64		s_FileDiffHistoCnt	=  0;			// number of buckets 
 
-static u64		s_FileDiffMissingA	= 0;		// number of packets mssing from PCAP A
-static u64		s_FileDiffMissingB	= 0;		// number of packets mssing from PCAP B
+static u64		s_FileDiffMissingA	= 0;			// number of packets mssing from PCAP A
+static u64		s_FileDiffMissingB	= 0;			// number of packets mssing from PCAP B
 
-static u64		s_HashMemory		= kMB(128);	// default hash memory size
+static u64		s_HashMemory			= kMB(128);	// default hash memory size
+static bool		s_EnableMMAP			= true;		// disable use of mmap, use fread instead
+static bool		s_EnableTraceOverflow 	= false;	// dump overflow packet info to console
+static s64		s_TimeDeltaMaxNS		= 100e6;	// max time between packets before discarding
 
 //---------------------------------------------------------------------------------------------
 // mmaps a pcap file in full
@@ -121,18 +139,44 @@ static PCAPFile_t* OpenPCAP(char* Path)
 		return NULL;
 	}
 
-	// note always map as read-only 
-
-	F->MapLength = (F->Length + 4095) & (~4095);
-	F->Map = mmap64(0, F->MapLength, PROT_READ, MAP_SHARED, F->fd, 0);
-	if (F->Map == (u8*)-1)
+	F->F = fopen(Path, "r");
+	if (F->F == NULL)
 	{
-		fprintf(stderr, "failed to map stream index [%s] %i\n", Path, errno);
-		return 0;	
+		fprintf(stderr, "failed to open buffered file [%s]\n", Path);
+		return NULL;
 	}
-	madvise(F->Map, F->MapLength, POSIX_MADV_SEQUENTIAL);
 
-	PCAPHeader_t* Header = (PCAPHeader_t*)F->Map;
+
+	// note always map as read-only 
+	PCAPHeader_t Header1;
+	PCAPHeader_t* Header = NULL; 
+	if (s_EnableMMAP)
+	{
+
+		F->MapLength = (F->Length + 4095) & (~4095);
+		F->Map = mmap64(0, F->MapLength, PROT_READ, MAP_SHARED, F->fd, 0);
+		if (F->Map == (u8*)-1)
+		{
+			fprintf(stderr, "failed to map stream index [%s] %i\n", Path, errno);
+			return 0;	
+		}
+		madvise(F->Map, F->MapLength, POSIX_MADV_SEQUENTIAL);
+
+		Header = (PCAPHeader_t*)F->Map;
+	}
+	else
+	{
+		int ret = fread(&Header1, 1, sizeof(Header1), F->F);
+		if (ret != sizeof(PCAPHeader_t))
+		{
+			fprintf(stderr, "failed to read header\n");
+			return NULL;
+		}
+
+		Header = &Header1;
+		F->PacketBuffer	= malloc(32*1024);
+	}
+
 	switch (Header->Magic)
 	{
 	case PCAPHEADER_MAGIC_USEC: F->TimeScale = 1000; break;
@@ -141,10 +185,38 @@ static PCAPFile_t* OpenPCAP(char* Path)
 		fprintf(stderr, "invalid pcap header %08x\n", Header->Magic);
 		return NULL;
 	}
-
 	F->ReadPos +=  sizeof(PCAPHeader_t);
 
 	return F;
+}
+
+//---------------------------------------------------------------------------------------------
+// get the next packet
+static PCAPPacket_t* ReadPCAP(PCAPFile_t* PCAP)
+{
+	if (s_EnableMMAP)
+	{
+		if (PCAP->ReadPos >= PCAP->Length) return NULL;
+		if (PCAP->ReadPos + sizeof(PCAPPacket_t) > PCAP->Length) return NULL; 
+
+		PCAPPacket_t* Pkt = (PCAPPacket_t*)(PCAP->Map + PCAP->ReadPos);
+		if (PCAP->ReadPos + sizeof(PCAPPacket_t) + Pkt->LengthCapture > PCAP->Length) return NULL; 
+
+		return Pkt;
+	}
+	else
+	{
+		int ret;
+		PCAPPacket_t* Pkt = (PCAPPacket_t*)PCAP->PacketBuffer;
+		ret = fread(Pkt, 1, sizeof(PCAPPacket_t), PCAP->F);
+		if (ret != sizeof(PCAPPacket_t)) return NULL;
+
+		if (PCAP->ReadPos + sizeof(PCAPPacket_t) + Pkt->LengthCapture > PCAP->Length) return NULL; 
+
+		ret = fread(Pkt+1, 1, Pkt->LengthCapture, PCAP->F);
+		if (ret != Pkt->LengthCapture) return NULL;
+		return Pkt;
+	}
 }
 
 //---------------------------------------------------------------------------------------------
@@ -195,15 +267,42 @@ static UDPHeader_t* PCAPUDPHeader(PCAPPacket_t* Pkt)
 }
 
 //---------------------------------------------------------------------------------------------
-// DEK packets usually have enough entropy for this to be enough 
-static u64 PayloadHash(u8* Payload, u32 Length)
+static u128 PayloadHash(u8* Payload, u32 Length)
 {
-	u64 Hash = 0;
+	/*
+	u32 Hash[4];
+
+	MurmurHash3_x86_32(Payload, Length, 0xbeefc0de, Hash);
+	//printf("%08x %08x %08x %08x\n", Hash[0], Hash[1], Hash[2], Hash[3]);
+
+	u64 Hash64 = 0;
+	Hash64  = ((u64)Hash[0]<<32ULL) | (u64)Hash[1];
+	Hash64 += ((u64)Hash[2]<<32ULL) | (u64)Hash[3];
+
+	return Hash64; 
+	*/
+
+	// DEK packets usually have enough entropy for this to be enough 
+	u128 Hash = 0; 
 	for (int i=0; i < Length; i++)
 	{
-		Hash = ((Hash << 5ULL) ^ (Hash >> 59ULL)) ^ (u64)Payload[i];
+		Hash = ((Hash << 5ULL) ^ (Hash >> 123ULL)) ^ (u64)Payload[i];
 	}
 	return Hash;
+
+/*
+	// fnv-1a
+	#define FNV_PRIME_32 16777619ULL
+	#define FNV_OFFSET_32 2166136261ULL
+
+    u64 hash = FNV_OFFSET_32, i;
+    for(int i = 0; i < Length; i++)
+    {
+        hash = hash ^ ((u64)Payload[i]); 
+        hash = hash * FNV_PRIME_32;
+    }
+    return hash;
+*/
 }
 
 //---------------------------------------------------------------------------------------------
@@ -211,7 +310,7 @@ static u64 PayloadHash(u8* Payload, u32 Length)
 
 static u32*			s_IndexLevel0 = NULL;	// first level index
 
-static HashNode_t* s_HashList = NULL;		// memory allocated for nodes
+static HashNode_t* 	s_HashList = NULL;		// memory allocated for nodes
 static u32			s_HashPos = 0;			// current allocation position
 static u64			s_HashCnt = 0;			// total allocated cnt 
 static u32			s_HashMax = 0;			// max number of hash positions 
@@ -221,7 +320,7 @@ static HashNode_t*	s_HashLRUTail = NULL;	// tail (least recently used) of nodes
 
 static void TracePacket(HashNode_t* N)
 {
-	printf("PacketTrace: Count:%i length:%4i Hash:%016llx dCycle:%lli\n", N->Cnt, N->Length, N->Hash, rdtsc() - N->LRUTS);
+	printf("PacketTrace: Count:%i length:%4i Hash:%016llx_%016llx MAC:%016llx_%016llx\n", N->Cnt, N->Length, (u64)(N->Hash>>64), (u64)N->Hash, (u64)(N->MAC>>64), (u64)N->MAC);
 
 	// no need to print no match packets 
 	if (N->Cnt == 0) return;
@@ -229,21 +328,22 @@ static void TracePacket(HashNode_t* N)
 
 
 	int c = N->Cnt - 1;
-	if (c > 7) c = 7;  
+	if (c > NODE_DEPTH-1) c = NODE_DEPTH-1;  
 
 	int i=0;
-	u64 LastTS = PCAPTimeStamp(N->Pkt[c]);
+	u64 LastTS = N->TS[c];
 	for (; c >= 0; c--)
 	{
-		if (c >= 8) break;
+		if (c >= NODE_DEPTH) break;
 
-		u64 TS = PCAPTimeStamp(N->Pkt[c]);
-		fEther_t* 	 ETHn = PCAPETHHeader( N->Pkt[c] );
+		u64 TS = N->TS[c];
+		fEther_t* ETHn = PCAPETHHeader( N->Pkt[c] );
 
-		printf("  [%i:%i]  %s | %02x:%02x:%02x:%02x:%02x:%02x -> %02x:%02x:%02x:%02x:%02x:%02x | ", 
+		printf("  [%i:%i]  %s %p | %02x:%02x:%02x:%02x:%02x:%02x -> %02x:%02x:%02x:%02x:%02x:%02x | ", 
 					i,
 					N->FID[c],
-					FormatTS(TS),
+					FormatTS(N->TS[c]),
+					N->Pkt[c],
 
 					ETHn->Src[0],
 					ETHn->Src[1],
@@ -349,7 +449,7 @@ static void NodeOutput(HashNode_t* N)
 		s64 TS1 = 0;
 		u32 FID1 = -1;
 
-		s64 TS0 	= PCAPTimeStamp(N->Pkt[0]);
+		s64 TS0 	= N->TS[0];
 		u64 FID0 	= N->FID[0];
 
 		for (int c =0; c < N->Cnt; c++)
@@ -358,7 +458,7 @@ static void NodeOutput(HashNode_t* N)
 
 			if (N->FID[c] != FID0)
 			{
-				TS1 	= PCAPTimeStamp(N->Pkt[c]);
+				TS1 	= N->TS[c];
 				FID1 	= N->FID[c];
 				break;
 			}
@@ -381,28 +481,32 @@ static void NodeOutput(HashNode_t* N)
 
 		if ((TS0 != 0) && (TS1 != 0))
 		{
-			s64 dT = (TS1 - TS0);
+			// strict packet hashes
+			if ((!s_EnableFileDiffStrict) || (N->Cnt == 2))
+			{
+				s64 dT 		= (TS1 - TS0);
 
-			// online mean/stde calc 
+				// online mean/stde calc 
 
-			s_FileDiffSum0 += 1;
-			s_FileDiffSum1 += dT;
-			s_FileDiffSum2 += dT*dT;
+				s_FileDiffSum0 += 1;
+				s_FileDiffSum1 += dT;
+				s_FileDiffSum2 += dT*dT;
 
-			// center / align and slice dT for histogram 
-			s64 dTH = dT;
-			dTH 	= (dTH > s_FileDiffHistoMax) ? s_FileDiffHistoMax : dTH;
-			dTH 	= (dTH < s_FileDiffHistoMin) ? s_FileDiffHistoMin : dTH;
-			dTH		+= -s_FileDiffHistoMin;
+				// center / align and slice dT for histogram 
+				s64 dTH 	= dT;
+				dTH 		= (dTH > s_FileDiffHistoMax) ? s_FileDiffHistoMax : dTH;
+				dTH 		= (dTH < s_FileDiffHistoMin) ? s_FileDiffHistoMin : dTH;
+				dTH			+= -s_FileDiffHistoMin;
 
-			// convert to histo buckets
+				// convert to histo buckets
 
-			s32 Index = dTH / s_FileDiffHistoUnit;
-			Index = (Index < 0) ? 0 : Index;
-			Index = (Index >= s_FileDiffHistoCnt) ? s_FileDiffHistoCnt -1 : Index;
+				s32 Index 	= dTH / s_FileDiffHistoUnit;
+				Index 		= (Index < 0) ? 0 : Index;
+				Index 		= (Index >= s_FileDiffHistoCnt) ? s_FileDiffHistoCnt -1 : Index;
 
-			s_FileDiffHisto[Index]++;
-			//printf("%f ns %016llx %016llx\n", dT, TS0, TS1); 
+				s_FileDiffHisto[Index]++;
+				//printf("%f ns %016llx %016llx\n", dT, TS0, TS1); 
+			}
 		}
 		// packet was nott in both files
 		else
@@ -410,7 +514,7 @@ static void NodeOutput(HashNode_t* N)
 			// its possible the packet just fell off the
 			// per node history (8 deep) e.g. same packet
 			// is seen alot (8+) times in the capture 
-			if (N->Cnt < 8)
+			if (N->Cnt < NODE_DEPTH)
 			{
 				if (FID0 == 0)
 				{
@@ -422,14 +526,15 @@ static void NodeOutput(HashNode_t* N)
 					//printf("missing packet. Not in File A\n");
 					s_FileDiffMissingB++;
 				}
-				//TracePacket(N);
 			}
 		}
+		if (N->Cnt > 2) s_DroppedPkts += N->Cnt - 2;
 	}
 	// count packets with hash overflow 
-	if (N->Cnt < 8)
+	if (N->Cnt >= NODE_DEPTH)
 	{
 		s_HashOverflow++;
+		if (s_EnableTraceOverflow) TracePacket(N);
 	}
 }
 
@@ -537,28 +642,29 @@ static void NodeFree(HashNode_t* N)
 	HashNode_t* Root = s_HashList + s_IndexLevel0[ N->Hash & 0x00ffffff];
 	HashNode_t* NS = Root; 
 	HashNode_t* NP = NULL; 
-	while (NS)
+
+	// remove entry from the list
+
+	if (N->Prev == 0)
 	{
-		if (NS == N)
-		{
-			// root node
-			if (NP == NULL)
-			{
-				s_IndexLevel0[ N->Hash & 0x00ffffff] = N->Next;
-			}
-			else
-			{
-				NP->Next = N->Next;	
-			}
-			break;
-		}
-		if (NS->Next == 0) break;
-		NP = NS;
-		NS = s_HashList + NS->Next;
+		s_IndexLevel0[ N->Hash & 0x00ffffff] = N->Next;
+	}
+	else
+	{
+		HashNode_t* NP = s_HashList + N->Prev;
+		NP->Next = N->Next;
+	}
+
+	if (N->Next != 0)
+	{
+		HashNode_t* NP 	= s_HashList + N->Next;
+		NP->Prev 		= N->Prev;
 	}
 
 	// remove from LRU list 
 	NodeLRUUnlink(N);	
+
+	memset(N, 0, sizeof(HashNode_t));
 }
 
 //---------------------------------------------------------------------------------------------
@@ -573,8 +679,6 @@ static HashNode_t* NodeAllocate(void)
 		N = s_HashLRUTail;
 		NodeFree(N);
 	}
-
-	memset(N, 0, sizeof(HashNode_t));
 	return N;
 }
 
@@ -592,38 +696,75 @@ static void HashFlush(void)
 
 //---------------------------------------------------------------------------------------------
 // create or append a packet to the current hash node list 
-static void HashPacket(u32 FID, PCAPPacket_t* Pkt, u32 Type, u64 Hash, u32 Length)
+static void HashPacket(u32 FID, PCAPPacket_t* Pkt, u32 Type, u128 Hash, u32 Length)
 {
-	HashNode_t* N = NULL;
+	HashNode_t* N 	= NULL;
+
+	u64 TS = PCAPTimeStamp(Pkt); 
+
+	u128* MAC = (u128*)(Pkt+1);
 
 	// search for hash
 	bool NodeHit = false;	
-	HashNode_t* NS = &s_HashList[ s_IndexLevel0[ Hash & 0x00ffffff] ];
-	u32 Count = 1e6;
-	while (NS)
+	u32 NIndex = s_IndexLevel0[ Hash & 0x00ffffff];
+	if (NIndex != 0)
 	{
-		if ((NS->Hash == Hash) && (NS->Type == Type))
+		HashNode_t* NS = &s_HashList[NIndex];
 		{
-			NS->Cnt++;
-
-			for (int i=7; i >= 1; i--)
+			u32 Count = 1e6;
+			while (NS)
 			{
-				NS->Pkt[i] = NS->Pkt[i-1];
-				NS->FID[i] = NS->FID[i-1];
+				if ((NS->Hash == Hash) && 
+					(NS->Type == Type) &&
+					(NS->MAC == MAC[0])
+				){
+					// can delete previous entries 
+					s64 dT = TS - NS->TS[0];
+					if (abs(dT) > s_TimeDeltaMaxNS)
+					{
+						// kick sample
+						NodeOutput(NS);
+
+						NS->Cnt = 0;
+
+						NS->Pkt[0] 	= Pkt; 
+						NS->TS [0] 	= TS; 
+						NS->FID[0] 	= FID; 
+
+						NodeHit 	= true;
+						N 			= NS;
+
+						NodeLRUUnlink(N);
+					}
+					else
+					{
+						NS->Cnt++;
+
+						for (int i=NODE_DEPTH-1; i >= 1; i--)
+						{
+							NS->Pkt[i]	= NS->Pkt[i-1];
+							NS->TS [i]	= NS->TS [i-1]; 
+							NS->FID[i]	= NS->FID[i-1];
+						}
+						NS->Pkt[0] = Pkt; 
+						NS->TS [0] = TS; 
+						NS->FID[0] = FID; 
+
+						NodeHit = true;
+						N = NS;
+
+						NodeLRUUnlink(N);
+					}
+					break;
+				}
+				if (NS->Next == 0)
+				{
+					break;
+				}
+				NS = s_HashList + NS->Next;
+				assert(--Count != 0);
 			}
-			NS->Pkt[0] = Pkt; 
-			NS->FID[0] = FID; 
-
-			NodeHit = true;
-			N = NS;
-
-			NodeLRUUnlink(N);
-
-			break;
 		}
-		if (NS->Next == 0) break;
-		NS = s_HashList + NS->Next;
-		assert(--Count != 0);
 	}
 
 	// allocate Node
@@ -632,13 +773,18 @@ static void HashPacket(u32 FID, PCAPPacket_t* Pkt, u32 Type, u64 Hash, u32 Lengt
 		N = NodeAllocate(); 
 		N->Hash 	= Hash;
 		N->Pkt[0]	= Pkt;
+		N->TS[0] 	= TS; 
 		N->FID[0]	= FID;
 		N->Cnt		= 1;
 		N->Length	= Length;
 		N->Type		= Type;
+		N->MAC		= MAC[0];
 
 		HashNode_t* OldN = &s_HashList[ s_IndexLevel0[ Hash & 0x00ffffff] ];
 		N->Next = OldN - s_HashList;	
+
+		OldN->Prev	= N - s_HashList;
+		N->Prev = 0; 
 
 		s_IndexLevel0[ Hash & 0x00ffffff] = N - s_HashList; 
 	}
@@ -659,12 +805,16 @@ static void TCPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 	u8* TCPPayload 	= (u8*)TCP + TCPOffset;
 	u32 TCPLength 	= swap16(IP4->Len) - TCPOffset - IPOffset;
 
-	assert(TCPLength < 16*1024);
+	if (TCPLength > 16*1024)
+	{
+		fprintf(stderr, "bogus tcp packet: %i %i %i %i\n", TCPLength, swap16(IP4->Len), TCPOffset, IPOffset);
+		return;
+	}
 
 	if ((TCPLength >= s_TCPLengthMin)  && (TCPLength <= s_TCPLengthMax))
 	{
 		// generate payload hash  
-		u64 Hash = PayloadHash(TCPPayload, TCPLength); 
+		u128 Hash = PayloadHash(TCPPayload, TCPLength); 
 		HashPacket(FID, Pkt, PKTTYPE_TCP, Hash, TCPLength);
 	}
 	//printf("tcp %i %i %x %x %x : %08x\n", swap16(TCP->PortSrc), swap16(TCP->PortDst), TCPOffset, sizeof(TCPHeader_t)/4, TCP->Flags, TCPPayload[0]); 
@@ -680,10 +830,14 @@ static void UDPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 	u8* Payload			= (u8*)(UDP + 1); 
 	u32 Length 			= swap16(UDP->Length);
 
-	assert(Length < 16*1024);
+	if (Length > 16*1024)
+	{
+		fprintf(stderr, "UDP length bogus %i\n", Length);
+		return;
+	}
 	
 	// generate payload hash  
-	u64 Hash = PayloadHash(Payload, Length); 
+	u128 Hash = PayloadHash(Payload, Length); 
 	HashPacket(FID, Pkt, PKTTYPE_UDP, Hash, Length);
 }
 
@@ -748,19 +902,25 @@ static void print_usage(void)
 	printf("Contact: support at fmad.io\n"); 
 	printf("\n");
 	printf("Options:\n");
-	printf(" --packet-trace        | write each packet events to stdout\n");
-	printf(" --tcp-length <number> | filter tcp packets to include only payload length of <number>\n");
-	printf(" --tcp-only            | only match tcp packets\n"); 
-	printf(" --udp-only            | only match udp packets\n"); 
-	printf(" --full-packet         | use entire packet contents for hash (.e.g no protocol)\n"); 
-	printf(" --full-packet-tcp-only  use entire packet contents for hash but only for tcp packets\n"); 
+	printf(" --packet-trace            | write each packet events to stdout\n");
+	printf(" --tcp-length <number>     | filter tcp packets to include only payload length of <number>\n");
+	printf(" --tcp-only                | only match tcp packets\n"); 
+	printf(" --udp-only                | only match udp packets\n"); 
+	printf(" --full-packet             | use entire packet contents for hash (.e.g no protocol)\n"); 
+	printf(" --full-packet-tcp-only    | use entire packet contents for hash but only for tcp packets\n"); 
+	printf(" --full-packet-udp-only    | use entire packet contents for hash but only for udp packets\n"); 
 	printf("\n");
-	printf(" --file-diff           | special mode of comparing packets between 2 files (instead of within the same file)\n");
-	printf(" --file-diff-min       | minimum time delta for histogram. default -1e6 ns\n"); 
-	printf(" --file-diff-max       | maximum time delta for histogram. default 1e6 ns\n"); 
-	printf(" --file-diff-unit      | duration of a single histogram slot. default 100ns\n"); 
+	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
+	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
+	printf(" --file-diff-min           | minimum time delta for histogram. default -1e6 ns\n"); 
+	printf(" --file-diff-max           | maximum time delta for histogram. default 1e6 ns\n"); 
+	printf(" --file-diff-unit          | duration of a single histogram slot. default 100ns\n"); 
+	printf(" --file-diff-no-timesync   | do not attempt to time sync the two files. reads 1MB chunks at a time\n");
+	printf(" --file-diff-disable-strct | allow more than two entries in a hash node to be sampled\n"); 
 	printf("\n");
-	printf(" --hash-memory         | (int MB) amount of memory to use for hashing. default 128MB\n");
+	printf(" --hash-memory             | (int MB) amount of memory to use for hashing. default 128MB\n");
+	printf(" --disable-mmap            | use fread not mmap of the pcap files\n"); 
+	printf(" --packet-time-delta-max   | reset time between new and old packets with the same hash.\n"); 
 }
 
 //---------------------------------------------------------------------------------------------
@@ -777,70 +937,107 @@ int main(int argc, char* argv[])
 			strcpy(FileNameList[FileNameListPos], argv[i]);
 			FileNameListPos++;
 		}
-		if (strcmp(argv[i], "--packet-trace") == 0)
+		else
 		{
-			s_EnablePacketTrace = true;
-		}
+			if (strcmp(argv[i], "--packet-trace") == 0)
+			{
+				s_EnablePacketTrace = true;
+			}
+			// specifiy an exact tcp length to use 
+			else if (strcmp(argv[i], "--tcp-length") == 0)
+			{
+				s_TCPLengthMin = atoi(argv[i+1]);	
+				s_TCPLengthMax = atoi(argv[i+1]);	
 
-		// specifiy an exact tcp length to use 
-		if (strcmp(argv[i], "--tcp-length") == 0)
-		{
-			s_TCPLengthMin = atoi(argv[i+1]);	
-			s_TCPLengthMax = atoi(argv[i+1]);	
-
-			fprintf(stderr, "TCP Length == %i\n", s_TCPLengthMin);
-			i += 1;
-		}
-
-		// only check tcp packets
-		if (strcmp(argv[i], "--tcp-only") == 0)
-		{
-			s_TCPEnable = true;
-			s_UDPEnable = false;
-		}
-
-		// full packet hash 
-		if (strcmp(argv[i], "--full-packet") == 0)
-		{
-			s_TCPEnable 	= false;
-			s_UDPEnable 	= false;
-			s_EnableFullHash = true;
-			s_EnableFullHashAll = true;
-		}
-		if (strcmp(argv[i], "--full-packet-tcp-only") == 0)
-		{
-			s_EnableFullHash 	= true;
-			s_EnableFullHashTCP = true;
-		}
-
-		// specal case of 2 pcap diff. compare first hash entrys between files
-		if (strcmp(argv[i], "--file-diff") == 0)
-		{
-			s_EnableFileDiff 	= true;
-		}
-		// min file diff position 
-		if (strcmp(argv[i], "--file-diff-min") == 0)
-		{
-			s_FileDiffHistoMin	= atoi(argv[i+1]); 
-			i+= 1;
-		}
-		// max file diff position 
-		if (strcmp(argv[i], "--file-diff-max") == 0)
-		{
-			s_FileDiffHistoMax	= atoi(argv[i+1]);
-			i+= 1;
-		}
-		// unit size of each sample 
-		if (strcmp(argv[i], "--file-diff-unit") == 0)
-		{
-			s_FileDiffHistoUnit= atoi(argv[i+1]);
-			i+= 1;
-		}
-		// amount of memory to allocate for hash nodes 
-		if (strcmp(argv[i], "--hash-memory") == 0)
-		{
-			s_HashMemory = atoi(argv[i+1])*1024*1024;
-			i+= 1;
+				fprintf(stderr, "TCP Length == %i\n", s_TCPLengthMin);
+				i += 1;
+			}
+			// only check tcp packets
+			else if (strcmp(argv[i], "--tcp-only") == 0)
+			{
+				s_TCPEnable = true;
+				s_UDPEnable = false;
+			}
+			// full packet hash 
+			else if (strcmp(argv[i], "--full-packet") == 0)
+			{
+				s_TCPEnable 		= false;
+				s_UDPEnable 		= false;
+				s_EnableFullHash 	= true;
+				s_EnableFullHashAll = true;
+				s_EnableFullHashTCP = true;
+				s_EnableFullHashUDP = true;
+			}
+			else if (strcmp(argv[i], "--full-packet-tcp-only") == 0)
+			{
+				s_EnableFullHash 	= true;
+				s_EnableFullHashTCP = true;
+				s_EnableFullHashUDP = false;
+			}
+			else if (strcmp(argv[i], "--full-packet-udp-only") == 0)
+			{
+				s_EnableFullHash 	= true;
+				s_EnableFullHashTCP = false;
+				s_EnableFullHashUDP = true;
+			}
+			// specal case of 2 pcap diff. compare first hash entrys between files
+			else if (strcmp(argv[i], "--file-diff") == 0)
+			{
+				s_EnableFileDiff 	= true;
+			}
+			// min file diff position 
+			else if (strcmp(argv[i], "--file-diff-min") == 0)
+			{
+				s_FileDiffHistoMin	= atoi(argv[i+1]); 
+				i+= 1;
+			}
+			// max file diff position 
+			else if (strcmp(argv[i], "--file-diff-max") == 0)
+			{
+				s_FileDiffHistoMax	= atoi(argv[i+1]);
+				i+= 1;
+			}
+			// unit size of each sample 
+			else if (strcmp(argv[i], "--file-diff-unit") == 0)
+			{
+				s_FileDiffHistoUnit= atoi(argv[i+1]);
+				i+= 1;
+			}
+			// use pure byte based file synching 
+			else if (strcmp(argv[i], "--file-diff-no-timesync") == 0)
+			{
+				s_EnableFileDiffTimeSync = false;	
+			}
+			// dont do strict file diff 
+			else if (strcmp(argv[i], "--file-diff-disable-strict") == 0)
+			{
+				s_EnableFileDiffStrict = false;	
+			}
+			// amount of memory to allocate for hash nodes 
+			else if (strcmp(argv[i], "--hash-memory") == 0)
+			{
+				s_HashMemory = atoi(argv[i+1])*1024*1024;
+				i+= 1;
+			}
+			// use fread of the data
+			else if (strcmp(argv[i], "--disable-mmap") == 0)
+			{
+				fprintf(stderr, "data using fread\n");
+				s_EnableMMAP = false; 
+			}
+			// max packet time deltea between new & old packet
+			// before reseting a node
+			else if (strcmp(argv[i], "--packet-time-delta-max") == 0)
+			{
+				fprintf(stderr, "setting max time delta\n");
+				s_TimeDeltaMaxNS = atoi(argv[i+1]); 
+				i+= 1;
+			}
+			else
+			{
+				fprintf(stderr, "unknown option [%s]\n", argv[i]);
+				return 0;
+			}
 		}
 	}
 
@@ -855,6 +1052,9 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "File Diff mode requires 2 pcap files\n");
 		return 0;
 	}
+
+	// calcuate tsc frequency
+	CycleCalibration();
 
 	// get timezone offset
 
@@ -872,10 +1072,13 @@ int main(int argc, char* argv[])
 		PCAPFile[i] = OpenPCAP(FileNameList[i]);	
 		if (!PCAPFile[i]) return 0;
 
-		printf("[%30s] FileSize: %lliGB\n", PCAPFile[i]->Path, PCAPFile[i]->Length / kGB(1)); 
+		// get starting time 
+		PCAPPacket_t* Pkt = ReadPCAP(PCAPFile[i]); 
+		u64 TS = PCAPTimeStamp(Pkt);
+
+		printf("[%30s] FileSize: %lliGB %s\n", PCAPFile[i]->Path, PCAPFile[i]->Length / kGB(1), FormatTS(TS)); 
 	}
 
-	u64 PktCnt 		= 0;
 	u64 HashSum 	= 0;
 	u64 TotalMemory = 0;
 
@@ -896,16 +1099,27 @@ int main(int argc, char* argv[])
 	s_FileDiffHisto 	= (u32*)malloc(sizeof(u32) *  s_FileDiffHistoCnt);
 	memset(s_FileDiffHisto, 0, sizeof(u32) * s_FileDiffHistoCnt);
 
-	u64 SyncTS  = 0; 
+	u64 TotalLength = 0;
+	for (int FID=0; FID < FileNameListPos; FID++)
+	{
+		TotalLength += PCAPFile[FID]->Length;	
+	}
+
+	u64 SyncTS  		= 0; 
+	u64 TotalByte 		= 0;
+	u64 TotalPkt 		= 0;
+	u64 NextPrintTSC 	= 0;
+	u64 StartTSC		= rdtsc();	
 	while (true)
 	{
 		bool Done = true;
 		for (int FID=0; FID < FileNameListPos; FID++)
 		{
-			PCAPFile_t* PCAP = PCAPFile[FID];
-			if (PCAP->ReadPos < PCAP->Length) Done = false;
+			if (!PCAPFile[FID]->Finished) Done = false;
 		}
 		if (Done) break;
+
+		fProfile_Start(15, "top");
 
 		for (int FID=0; FID < FileNameListPos; FID++)
 		{
@@ -914,15 +1128,16 @@ int main(int argc, char* argv[])
 
 			// read next 1MB
 
-			while (PCAP->ReadPos < PCAP->Length)
+			while (true)
 			{
-				PCAPPacket_t* Pkt = (PCAPPacket_t*)(PCAP->Map + PCAP->ReadPos);
+				PCAPPacket_t* Pkt = ReadPCAP(PCAP); 
+				if (!Pkt)
+				{
+					PCAP->Finished = true;
+					break;
+				}
 
-				// if file terminates in the middle of a packet 
-				if (PCAP->ReadPos + sizeof(PCAPPacket_t) > PCAP->Length) break;
-				if (PCAP->ReadPos + sizeof(PCAPPacket_t) + Pkt->LengthCapture > PCAP->Length) break;
-
-				u64 TS = Pkt->Sec*k1E9 + Pkt->NSec;
+				u64 TS = PCAPTimeStamp(Pkt);
 
 				// want to increment file 0 by 128KB each time, but want 
 				// the other file to attempt time sync with file0. this maximizes
@@ -941,7 +1156,7 @@ int main(int argc, char* argv[])
 						if (TS > SyncTS)
 						{
 							// when File0`s last timestamp is less thean FileA 
-							if (PCAPFile[0]->ReadPos < PCAPFile[0]->Length)
+							if (!PCAPFile[0]->Finished)
 							{
 								break;
 							}
@@ -957,7 +1172,7 @@ int main(int argc, char* argv[])
 				fEther_t* E = PCAPETHHeader(Pkt);
 				if (s_EnableFullHash)
 				{
-					bool HashIt = s_EnableFullHashAll;
+					bool HashIt = false;
 					switch (swap16(E->Proto))
 					{
 					case ETHER_PROTO_IPV4:
@@ -966,15 +1181,31 @@ int main(int argc, char* argv[])
 							u32 IPOffset = (IP4->Version & 0x0f)*4; 
 							switch (IP4->Proto)
 							{
-							case IPv4_PROTO_TCP: HashIt = s_EnableFullHashTCP; break;
+							case IPv4_PROTO_TCP:
+								if (s_EnableFullHashTCP)
+								{
+									TCPHeader_t* TCP = (TCPHeader_t*)( ((u8*)IP4) + IPOffset);
+
+									u32 TCPOffset 	= ((TCP->Flags&0xf0)>>4)*4;
+									u8* TCPPayload 	= (u8*)TCP + TCPOffset;
+									u32 TCPLength 	= swap16(IP4->Len) - TCPOffset - IPOffset;
+									if ((TCPLength >= s_TCPLengthMin)  && (TCPLength <= s_TCPLengthMax))
+									{
+										HashIt = true; 
+									}
+								}
+								break;
+
 							case IPv4_PROTO_UDP: HashIt = s_EnableFullHashUDP; break;
 							}
 						}
 					}
+ 					HashIt |= s_EnableFullHashAll;
+
 					if (HashIt)
 					{
-						u64 Hash = PayloadHash((u8*)E, Pkt->LengthCapture); 
-						HashPacket(FID, Pkt, PKTTYPE_FULL, Hash, Pkt->LengthCapture);
+						u128 Hash = PayloadHash((u8*)E, Pkt->Length); 
+						HashPacket(FID, Pkt, PKTTYPE_FULL, Hash, Pkt->Length);
 					}
 				}
 				else
@@ -998,17 +1229,59 @@ int main(int argc, char* argv[])
 				PCAP->ReadPos += sizeof(PCAPPacket_t) + Pkt->LengthCapture;
 				PCAP->PktCnt++;
 
-				if (PktCnt % 1000000 == 0)
-				{
-					u64 Depth = 0; //NodeLRUValidate();
-					fprintf(stderr, "[%.4f%%] %.2fM %4i : %.2fGB %lli Matches %lli\n", PCAP->ReadPos / (double)PCAP->Length, PktCnt / 1e6, Pkt->LengthCapture, TotalMemory / 1e9, s_HashCnt, Depth);
-				}
-				PktCnt++;
+				TotalPkt++;
+				TotalByte += sizeof(PCAPPacket_t) + Pkt->LengthCapture;
 			}
 		}
+		fProfile_Stop(15);
+
+		if (rdtsc() > NextPrintTSC)
+		{
+			u64 TSC = rdtsc();
+			NextPrintTSC = TSC + 3e9;
+
+			static u64 LastTSC = 0;
+			double dT = tsc2ns(TSC - LastTSC) / 1e9;
+			LastTSC = TSC;
+
+			static u64 LastByte = 0;
+			double Bps = (TotalByte - LastByte) / dT;
+			LastByte = TotalByte;
+
+			double TotalTime = tsc2ns(TSC - StartTSC);
+			double ETA = TotalLength * (TotalTime / (double)TotalByte);
+			double Min = (ETA - TotalTime) / 60e9;
+
+			fprintf(stderr, "[");
+			for (int f=0; f < FileNameListPos; f++)
+			{
+				u64 TSf = 0;	
+				PCAPPacket_t* Pkt = ReadPCAP(PCAPFile[f]); 
+				if (Pkt != NULL)
+				{
+					TSf = PCAPTimeStamp(Pkt);
+				}
+
+				//fprintf(stderr, "%.2f%% %lli/%lli ", PCAPFile[f]->ReadPos / (double)PCAPFile[f]->Length, PCAPFile[f]->ReadPos, PCAPFile[f]->Length);
+				fprintf(stderr, "%.2f%% %s  ", PCAPFile[f]->ReadPos / (double)PCAPFile[f]->Length, FormatTS(TSf)); 
+			}
+
+
+			u64 Depth = 0; //NodeLRUValidate();
+			fprintf(stderr, "] %.2fM Pkts %.3fGbps : %.2fGB UPkt:%lli Hit:%.f Over:%lli ETA %.2fMin\n", 
+					TotalPkt / 1e6, 
+					(8.0*Bps) / 1e9,
+					TotalByte / 1e9, 
+					s_HashCnt,
+					s_FileDiffSum0,
+					s_HashOverflow,
+					Min
+			);
+		}
 	}
-	printf("read done\n");
-	printf("%llx %llx\n", PCAPFile[0]->ReadPos, PCAPFile[1]->ReadPos);
+
+	//fProfile_Dump(15);
+	printf("Reading Done\n");
 
 	printf("Validating...\n");
 	NodeLRUValidate();
@@ -1019,11 +1292,20 @@ int main(int argc, char* argv[])
 
 	printf("Done\n");
 
-	//printf("Index used: %.2fGB \n", TotalMemory / 1e9);	
-	//printf("nodes allocated: %i\n", s_HashPos);
-	//printf("nodes overflow:  %lli\n", s_HashOverflow);
+	printf("Hash Overflow:  %lli\n", s_HashOverflow);
+	printf("Dropped      : %lli\n", s_DroppedPkts);
+	printf("Process Time : %.2fMin\n", tsc2ns(rdtsc() - StartTSC) / 60e9);
+
+	printf("FileStats:\n");
+	for (int i=0; i < FileNameListPos; i++)
+	{
+		printf("  [%-30s] Pkts: %lli\n", PCAPFile[i]->Path, PCAPFile[i]->PktCnt);
+	}
+	printf("\n");
 
 	if (s_EnableFileDiff) PrintFileDiffHisto(PCAPFile);
+
+	printf("Total : %lli\n", s_HashOverflow + s_DroppedPkts + (u64)s_FileDiffSum0);
 }
 
 /* vim: set ts=4 sts=4 */
