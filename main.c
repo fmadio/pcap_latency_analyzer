@@ -113,6 +113,8 @@ static s64		s_FileDiffHistoCnt	=  0;			// number of buckets
 
 static u64		s_FileDiffMissingA	= 0;			// number of packets mssing from PCAP A
 static u64		s_FileDiffMissingB	= 0;			// number of packets mssing from PCAP B
+static bool		s_FileDiffMissingTraceA = false;		// trace all packets that are missing
+static bool		s_FileDiffMissingTraceB = false;		// trace all packets that are missing
 
 static bool		s_FileDiffNoFCSFileA	= false;	// compensate for no FCS in file A
 static bool		s_FileDiffNoFCSFileB	= false;	// compensate for no FCS in file B
@@ -547,20 +549,26 @@ static void NodeOutput(HashNode_t* N)
 		else
 		{
 			// update number of packets not seen in each file 
+			bool MissingA = false;
+			bool MissingB = false;
 			for (int i=0; i < N->Cnt; i++)
 			{
 				switch (N->FID[i])
 				{
 				case 0: 
 					s_FileDiffMissingA++; 
+					MissingA = true;
 					break;
 				case 1: 
 					s_FileDiffMissingB++; 
+					MissingB = true;
 					break;
 				default:
 						break;
 				}
 			}
+			if (MissingA && s_FileDiffMissingTraceA) TracePacket(N);
+			if (MissingB && s_FileDiffMissingTraceB) TracePacket(N);
 			s_DroppedPkts += N->Cnt;
 		}
 	}
@@ -1001,7 +1009,7 @@ static void PrintFileDiffHisto(PCAPFile_t* PCAPFile[])
 		Sum += s_FileDiffHisto[i]; 
 		s64 dT = s_FileDiffHistoMin + i * s_FileDiffHistoUnit;
 		double Pct = (double)s_FileDiffHisto[i] / (double)Max;
-		printf("%8lli ns : %12i %.4f (%.4f) : ", dT, s_FileDiffHisto[i], Pct, Sum / (double)Total);
+		printf("%8lli ns : %12lli %.4f (%.4f) : ", dT, s_FileDiffHisto[i], Pct, Sum / (double)Total);
 
 		int StarCnt = 100*Pct;
 		if ((s_FileDiffHisto[i] > 0) && StarCnt == 0) StarCnt = 1;
@@ -1037,7 +1045,7 @@ static void PrintLengthHisto(void)
 		{
 			Sum += s_LengthHisto[i];
 
-			printf("%4i B : %12lli (%.4f) : ", i, s_LengthHisto[i], Sum / TotalSample);
+			printf("%4i B : %12lli (%.4f) : ", i, s_LengthHisto[i], Sum / (double)TotalSample);
 
 			double Pct = (double)s_LengthHisto[i] / (double)MaxCnt;
 			int StarCnt = 100.0*Pct;
@@ -1085,6 +1093,7 @@ static void print_usage(void)
 	printf(" --file-diff-strict        | only matches with two entries in a hash node will be sampled\n"); 
 	printf(" --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value\n"); 
 	printf(" --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value\n"); 
+	printf(" --file-diff-missing-trace | trace all packets that are missing\n"); 
 	printf("\n");
 	printf(" --ts-last-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
 	printf(" --ts-last-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
@@ -1195,6 +1204,17 @@ int main(int argc, char* argv[])
 				s_FileDiffNoFCSFileB 	= true;
 				s_FileDiffNoFCS			= true;
 			}
+			// trace packets missing from file A 
+			else if (strcmp(argv[i], "--file-diff-missing-trace-a") == 0)
+			{
+				s_FileDiffMissingTraceA	= true;
+			}
+			// trace packets missing from file B 
+			else if (strcmp(argv[i], "--file-diff-missing-trace-b") == 0)
+			{
+				s_FileDiffMissingTraceB	= true;
+			}
+
 			// adjust file A timestamp to start of packet (from end of packet) 
 			else if (strcmp(argv[i], "--ts-last-byte-a") == 0)
 			{
@@ -1448,7 +1468,7 @@ int main(int argc, char* argv[])
 	printf("FileStats:\n");
 	for (int i=0; i < FileNameListPos; i++)
 	{
-		printf("  %12lli Pkts [%-30s] Pkts: %lli\n", PCAPFile[i]->PktCnt, PCAPFile[i]->Path);
+		printf("  %12lli Pkts [%-30s]\n", PCAPFile[i]->PktCnt, PCAPFile[i]->Path);
 	}
 	printf("\n");
 
