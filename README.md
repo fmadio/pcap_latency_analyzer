@@ -27,7 +27,8 @@ Hash the entire packet
  --full-packet-tcp-only    | use entire packet contents for hash but only for tcp packets
  --full-packet-udp-only    | use entire packet contents for hash but only for udp packets
 
-Compare 2 PCAP files: --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)
+Compare 2 PCAP files: 
+ --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)
  --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)
  --file-diff-min           | minimum time delta for histogram. default -1e6 ns
  --file-diff-max           | maximum time delta for histogram. default 1e6 ns
@@ -38,8 +39,8 @@ Compare 2 PCAP files: --file-diff               | special mode of comparing pack
  --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value
  --file-diff-missing-trace | trace all packets that are missing
 
- --ts-last-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)
- --ts-last-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)
+ --ts-last-byte-a          | adjust timestamp of first file A from last byte to first byte (assumes 10G)
+ --ts-last-byte-b          | adjust timestamp of first file B from last byte to first byte (assumes 10G)
 
 ```
 
