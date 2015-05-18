@@ -40,6 +40,8 @@ typedef struct
 	u8*		PacketBuffer;	// temp read buffer
 	bool	Finished;		// read completed
 
+	u64		TS;				// last TS processed
+
 } PCAPFile_t;
 
 #define PKTTYPE_TCP				1			// tcp packet
@@ -549,10 +551,11 @@ static void NodeOutput(HashNode_t* N)
 			{
 				switch (N->FID[i])
 				{
-				case 0: s_FileDiffMissingB++; break;
-				case 1: 
+				case 0: 
 					s_FileDiffMissingA++; 
-					TracePacket(N);
+					break;
+				case 1: 
+					s_FileDiffMissingB++; 
 					break;
 				default:
 						break;
@@ -873,6 +876,92 @@ static void UDPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 }
 
 //---------------------------------------------------------------------------------------------
+// has the entire packet, mac/ip/headers/everything
+static inline void ProcessHashFull(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* Pkt, u64 TS)
+{
+	fEther_t* E = PCAPETHHeader(Pkt);
+	bool HashIt = false;
+	switch (swap16(E->Proto))
+	{
+	case ETHER_PROTO_IPV4:
+	{
+		IP4Header_t* IP4 = PCAPIP4Header(Pkt); 
+		u32 IPOffset = (IP4->Version & 0x0f)*4; 
+		switch (IP4->Proto)
+		{
+		case IPv4_PROTO_TCP:
+			if (s_EnableFullHashTCP)
+			{
+				TCPHeader_t* TCP = (TCPHeader_t*)( ((u8*)IP4) + IPOffset);
+
+				// filter by length TCP packets to be fully hashed 
+
+				u32 TCPOffset 	= ((TCP->Flags&0xf0)>>4)*4;
+				u8* TCPPayload 	= (u8*)TCP + TCPOffset;
+				u32 TCPLength 	= swap16(IP4->Len) - TCPOffset - IPOffset;
+				if ((TCPLength >= s_TCPLengthMin)  && (TCPLength <= s_TCPLengthMax))
+				{
+					HashIt 		= true; 
+					if (TCPLength < 16*1024)
+					{
+						s_LengthHisto[TCPLength]++;
+					}
+				}
+			}
+			break;
+
+		case IPv4_PROTO_UDP: 
+			HashIt = s_EnableFullHashUDP; 
+			break;
+		}
+	}
+	break;
+	}
+
+	// ignore protocol 
+	if (s_EnableFullHashAll)
+	{
+		if (Pkt->Length >= s_FullHashLengthMin)
+		{
+			HashIt 		= true;
+		}
+	}
+
+	// compensate for diffing between FCS and noFCS capture files
+	if (HashIt)
+	{
+		u32 HashLength 	= Pkt->Length; 
+
+		if (s_FileDiffNoFCS && (FID == 0) && s_FileDiffNoFCSFileB) HashLength -= 4;
+		if (s_FileDiffNoFCS && (FID == 1) && s_FileDiffNoFCSFileA) HashLength -= 4;
+
+		u128 Hash = PayloadHash((u8*)E, HashLength); 
+		HashPacket(FID, Pkt, PKTTYPE_FULL, Hash, HashLength);
+	}
+}
+
+//---------------------------------------------------------------------------------------------
+// extract only the packload tcp/udp and hash with that
+static inline void ProcessHashPayload(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* Pkt, u64 TS)
+{
+	fEther_t* E = PCAPETHHeader(Pkt);
+	switch (swap16(E->Proto))
+	{
+	case ETHER_PROTO_IPV4:
+	{
+		IP4Header_t* IP4 = PCAPIP4Header(Pkt); 
+		u32 IPOffset = (IP4->Version & 0x0f)*4; 
+		switch (IP4->Proto)
+		{
+		case IPv4_PROTO_TCP: TCPProcess(FID, Pkt, E, IP4, IPOffset); break;
+		case IPv4_PROTO_UDP: UDPProcess(FID, Pkt, E, IP4, IPOffset); break;
+		}
+	}
+	break;
+	}
+}
+
+//---------------------------------------------------------------------------------------------
 
 static void PrintFileDiffHisto(PCAPFile_t* PCAPFile[])
 {
@@ -973,13 +1062,20 @@ static void print_usage(void)
 	printf("\n");
 	printf("Options:\n");
 	printf(" --packet-trace            | write each packet events to stdout\n");
+	printf(" --length-histo            | print packet length histogram\n");
+	printf(" --hash-memory             | (int MB) amount of memory to use for hashing. default 128MB\n");
+	printf(" --disable-mmap            | use fread not mmap of the pcap files\n"); 
+	printf(" --packet-time-delta-max   | reset time between new and old packets with the same hash.\n"); 
+	printf("\n");
 	printf(" --tcp-length <number>     | filter tcp packets to include only payload length of <number>\n");
 	printf(" --tcp-only                | only match tcp packets\n"); 
 	printf(" --udp-only                | only match udp packets\n"); 
+	printf("Hash the entire packet\n");
 	printf(" --full-packet             | use entire packet contents for hash (.e.g no protocol)\n"); 
 	printf(" --full-packet-tcp-only    | use entire packet contents for hash but only for tcp packets\n"); 
 	printf(" --full-packet-udp-only    | use entire packet contents for hash but only for udp packets\n"); 
 	printf("\n");
+	printf("Compare 2 PCAP files:");
 	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
 	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
 	printf(" --file-diff-min           | minimum time delta for histogram. default -1e6 ns\n"); 
@@ -987,15 +1083,12 @@ static void print_usage(void)
 	printf(" --file-diff-unit          | duration of a single histogram slot. default 100ns\n"); 
 	printf(" --file-diff-no-timesync   | do not attempt to time sync the two files. reads 1MB chunks at a time\n");
 	printf(" --file-diff-strict        | only matches with two entries in a hash node will be sampled\n"); 
-	printf(" --file-diff-nofs-a        | file A has no FCS (ethernet crc) value\n"); 
-	printf(" --file-diff-nofs-b        | file B has no FCS (ethernet crc) value\n"); 
+	printf(" --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value\n"); 
+	printf(" --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value\n"); 
 	printf("\n");
-	printf(" --ts-first-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
-	printf(" --ts-first-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
+	printf(" --ts-last-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
+	printf(" --ts-last-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
 	printf("\n");
-	printf(" --hash-memory             | (int MB) amount of memory to use for hashing. default 128MB\n");
-	printf(" --disable-mmap            | use fread not mmap of the pcap files\n"); 
-	printf(" --packet-time-delta-max   | reset time between new and old packets with the same hash.\n"); 
 }
 
 //---------------------------------------------------------------------------------------------
@@ -1103,13 +1196,13 @@ int main(int argc, char* argv[])
 				s_FileDiffNoFCS			= true;
 			}
 			// adjust file A timestamp to start of packet (from end of packet) 
-			else if (strcmp(argv[i], "--ts-first-byte-a") == 0)
+			else if (strcmp(argv[i], "--ts-last-byte-a") == 0)
 			{
 				fprintf(stderr, "Adjusting file A timestamp to start of packet (from end of packet)\n");
 				s_FileDiffTimeOffset[0] = -(1e9 / 10e9) * 8.0;
 			}
 			// adjust file B timestamp to start of packet (from end of packet) 
-			else if (strcmp(argv[i], "--ts-first-byte-b") == 0)
+			else if (strcmp(argv[i], "--ts-last-byte-b") == 0)
 			{
 				fprintf(stderr, "Adjusting file B timestamp to start of packet (from end of packet)\n");
 				s_FileDiffTimeOffset[1] = -(1e9 / 10e9) * 8.0;
@@ -1150,8 +1243,6 @@ int main(int argc, char* argv[])
 				s_MaxPackets = atoll(argv[i+1]); 
 				i+= 1;
 			}
-
-
 			else
 			{
 				fprintf(stderr, "unknown option [%s]\n", argv[i]);
@@ -1257,7 +1348,7 @@ int main(int argc, char* argv[])
 					break;
 				}
 
-				u64 TS = PCAPTimeStamp(FID, Pkt);
+				PCAP->TS = PCAPTimeStamp(FID, Pkt);
 
 				// want to increment file 0 by 128KB each time, but want 
 				// the other file to attempt time sync with file0. this maximizes
@@ -1269,11 +1360,11 @@ int main(int argc, char* argv[])
 						if (PCAP->ReadPos > StartPos + kMB(1)) break;
 
 						// include fudge window
-						SyncTS  = TS;
+						SyncTS  = PCAP->TS;
 					}
 					else
 					{
-						if (TS > SyncTS)
+						if (PCAP->TS > SyncTS)
 						{
 							// when File0`s last timestamp is less thean FileA 
 							if (!PCAPFile[0]->Finished)
@@ -1289,78 +1380,8 @@ int main(int argc, char* argv[])
 					if ((PCAP->ReadPos > StartPos + kMB(1))) break;
 				}
 
-				fEther_t* E = PCAPETHHeader(Pkt);
-				if (s_EnableFullHash)
-				{
-					bool HashIt = false;
-					switch (swap16(E->Proto))
-					{
-					case ETHER_PROTO_IPV4:
-						{
-							IP4Header_t* IP4 = PCAPIP4Header(Pkt); 
-							u32 IPOffset = (IP4->Version & 0x0f)*4; 
-							switch (IP4->Proto)
-							{
-							case IPv4_PROTO_TCP:
-								if (s_EnableFullHashTCP)
-								{
-									TCPHeader_t* TCP = (TCPHeader_t*)( ((u8*)IP4) + IPOffset);
-
-									u32 TCPOffset 	= ((TCP->Flags&0xf0)>>4)*4;
-									u8* TCPPayload 	= (u8*)TCP + TCPOffset;
-									u32 TCPLength 	= swap16(IP4->Len) - TCPOffset - IPOffset;
-									if ((TCPLength >= s_TCPLengthMin)  && (TCPLength <= s_TCPLengthMax))
-									{
-										HashIt 		= true; 
-										if (TCPLength < 16*1024)
-										{
-											s_LengthHisto[TCPLength]++;
-										}
-									}
-								}
-								break;
-
-							case IPv4_PROTO_UDP: HashIt = s_EnableFullHashUDP; break;
-							}
-						}
- 						if (s_EnableFullHashAll)
-						{
-							if (Pkt->Length >= s_FullHashLengthMin)
-							{
-								HashIt 		= true;
-							}
-						}
-					}
-
-					// compensate for diffing between FCS and noFCS capture files
-					if (HashIt)
-					{
-						u32 HashLength 	= Pkt->Length; 
-
-						if (s_FileDiffNoFCS && (FID == 0) && s_FileDiffNoFCSFileB) HashLength -= 4;
-						if (s_FileDiffNoFCS && (FID == 1) && s_FileDiffNoFCSFileA) HashLength -= 4;
-
-						u128 Hash = PayloadHash((u8*)E, HashLength); 
-						HashPacket(FID, Pkt, PKTTYPE_FULL, Hash, HashLength);
-					}
-				}
-				else
-				{
-					switch (swap16(E->Proto))
-					{
-					case ETHER_PROTO_IPV4:
-						{
-							IP4Header_t* IP4 = PCAPIP4Header(Pkt); 
-							u32 IPOffset = (IP4->Version & 0x0f)*4; 
-							switch (IP4->Proto)
-							{
-							case IPv4_PROTO_TCP: TCPProcess(FID, Pkt, E, IP4, IPOffset); break;
-							case IPv4_PROTO_UDP: UDPProcess(FID, Pkt, E, IP4, IPOffset); break;
-							}
-						}
-						break;
-					}
-				}
+				if (s_EnableFullHash) 	ProcessHashFull(FID, PCAP, Pkt, PCAP->TS);
+				else					ProcessHashPayload(FID, PCAP, Pkt, PCAP->TS);
 
 				PCAP->ReadPos += sizeof(PCAPPacket_t) + Pkt->LengthCapture;
 				PCAP->PktCnt++;
@@ -1390,17 +1411,9 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "[");
 			for (int f=0; f < FileNameListPos; f++)
 			{
-				u64 TSf = 0;	
-				PCAPPacket_t* Pkt = ReadPCAP(PCAPFile[f]); 
-				if (Pkt != NULL)
-				{
-					TSf = PCAPTimeStamp(f, Pkt);
-				}
-
-				//fprintf(stderr, "%.2f%% %lli/%lli ", PCAPFile[f]->ReadPos / (double)PCAPFile[f]->Length, PCAPFile[f]->ReadPos, PCAPFile[f]->Length);
+				u64 TSf = PCAPFile[f]->TS; 
 				fprintf(stderr, "%.2f%% %s  ", PCAPFile[f]->ReadPos / (double)PCAPFile[f]->Length, FormatTS(TSf)); 
 			}
-
 
 			u64 Depth = 0; //NodeLRUValidate();
 			fprintf(stderr, "] %.2fM Pkts %.3fGbps : %.2fGB UPkt:%lli Hit:%.f Over:%lli ETA %.2fMin\n", 
