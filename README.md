@@ -5,7 +5,7 @@ An example situation is calculating the latency profile of a switch/or other net
 
 **Algo**
 
-It works by generating a 128b DEK hash of the entire packet (--full-packet) or just the payload (TCP payload / UDP payload) which gets stored into a large hash table. When a packet`s hash matches an existing entry int the table it appends the packet for further analysis. In addition to 128b DEK hash the match also checks the first 16B of the packet which includes the MAC header + first few bytes of the next layer. This is done because of the low entropy level of small say 64B packets which would generate many false positives. 
+It works by generating a 128b DEK hash of the entire packet (--full-packet) or just the payload (TCP payload / UDP payload) which gets stored into a large hash table. When a packet`s hash matches an existing entry in the table it appends the packet for further analysis. In addition to 128b DEK hash the match also checks the first 16B of the packet which includes the MAC header + first few bytes of the next layer. This is done because of the low entropy level of small say 64B packets which generates many false positives. 
 
 
 Command line options 
