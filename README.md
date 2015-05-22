@@ -1,5 +1,6 @@
 # pcap_diff
-pcap_diff is a simple packet capture analysis tool used to extract time difference between the same packets in 2 different pcap files. 
+
+pcap_diff is a simple *packet analyzer* tool used to extract time difference between the same packets in 2 different pcap files. 
 
 An example situation is calculating the latency profile of a switch/or other network device where the same packet is recorded with a highly accurate hardware timestamped packet capture device both before the network device and after it.  Using this script a simple text based latency statistics and histogram can be generated.
 
@@ -38,6 +39,7 @@ Compare 2 PCAP files:
  --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value
  --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value
  --file-diff-missing-trace | trace all packets that are missing
+ --file-diff-latency-trace <number in ns> | trace packets that have latecn greather than <number>
 
  --ts-last-byte-a          | adjust timestamp of first file A from last byte to first byte (assumes 10G)
  --ts-last-byte-b          | adjust timestamp of first file B from last byte to first byte (assumes 10G)
@@ -61,3 +63,8 @@ $ ./pcap_diff  capture.pcap  --tcp-only --packet-trace
 
 $ ./pcap_diff  capture.pcap  --tcp-only --packet-trace  --tcp-length 200 
 
+### Support 
+
+This tool is part of the **fmadio 10G sniffer appliance**, more information can be found at http://fmad.io 
+
+Contact us for any bugs/patches/requests support at fmad.io 
