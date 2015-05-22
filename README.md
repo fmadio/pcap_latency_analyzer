@@ -1,6 +1,6 @@
 # pcap_diff
 
-pcap_diff is a simple *packet analyzer* tool used to extract time difference between the same packets in 2 different pcap files. 
+pcap_diff is a simple **packet analyzer** tool used to extract time difference between the same packets in 2 different pcap files. 
 
 An example situation is calculating the latency profile of a switch/or other network device where the same packet is recorded with a highly accurate hardware timestamped packet capture device both before the network device and after it.  Using this script a simple text based latency statistics and histogram can be generated.
 
@@ -67,4 +67,4 @@ $ ./pcap_diff  capture.pcap  --tcp-only --packet-trace  --tcp-length 200
 
 This tool is part of the **fmadio 10G sniffer appliance**, more information can be found at http://fmad.io 
 
-Contact us for any bugs/patches/requests support at fmad.io 
+Contact us for any bugs/patches/requests send a mail to: support at fmad.io 
