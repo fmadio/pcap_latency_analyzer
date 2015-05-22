@@ -124,6 +124,8 @@ static bool		s_FileDiffStampAdjust	= false;	// adjust the timestamp based on fir
 static double	s_FileDiffTimeOffset[16];			// length scale toe move timestamp to start of packet 
 													// no adjust the scale is 0
 
+static s64		s_FileDiffLatencyTraceMin	= 1e9;		// latency threshold to start printing. set via cmd line arg
+
 static u64		s_HashMemory			= kMB(128);	// default hash memory size
 static bool		s_EnableMMAP			= true;		// disable use of mmap, use fread instead
 static bool		s_EnableTraceOverflow 	= false;	// dump overflow packet info to console
@@ -543,6 +545,11 @@ static void NodeOutput(HashNode_t* N)
 			Index 		= (Index >= s_FileDiffHistoCnt) ? s_FileDiffHistoCnt -1 : Index;
 
 			s_FileDiffHisto[Index]++;
+
+			if (labs(dT) > s_FileDiffLatencyTraceMin)
+			{
+				TracePacket(N);
+			}
 			//printf("%f ns %016llx %016llx\n", dT, TS0, TS1); 
 		}
 		// packet was not in both files
@@ -1057,8 +1064,6 @@ static void PrintLengthHisto(void)
 	}
 }
 
-
-
 //---------------------------------------------------------------------------------------------
 
 static void print_usage(void)
@@ -1094,6 +1099,7 @@ static void print_usage(void)
 	printf(" --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value\n"); 
 	printf(" --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value\n"); 
 	printf(" --file-diff-missing-trace | trace all packets that are missing\n"); 
+	printf(" --file-diff-latency-trace <number in ns> | trace packets that have latecn greather than <number>\n"); 
 	printf("\n");
 	printf(" --ts-last-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
 	printf(" --ts-last-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
@@ -1214,7 +1220,14 @@ int main(int argc, char* argv[])
 			{
 				s_FileDiffMissingTraceB	= true;
 			}
+			// trace packets with latency above the specified threshold 
+			else if (strcmp(argv[i], "--file-diff-latency-trace") == 0)
+			{
+				s_FileDiffLatencyTraceMin = atol(argv[i+1]); 
+				i++;
 
+				fprintf(stderr, "enabling file diff latency trace with threshold of %lli ns\n", s_FileDiffLatencyTraceMin);
+			}
 			// adjust file A timestamp to start of packet (from end of packet) 
 			else if (strcmp(argv[i], "--ts-last-byte-a") == 0)
 			{
