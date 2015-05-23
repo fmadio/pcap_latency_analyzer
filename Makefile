@@ -15,9 +15,9 @@ LIBS += -lm
 	gcc $(DEF) -c -o $@ -g $<
 
 all: $(OBJS) 
-	gcc -g -o pcap_latency_analyzer $(OBJS)  $(LIBS)
+	gcc -g -o pcap_latency $(OBJS)  $(LIBS)
 
 clean:
 	rm -f $(OBJS)
-	rm -f pcap_latency_analyzer
+	rm -f pcap_latency
 
