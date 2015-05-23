@@ -1193,6 +1193,7 @@ static void print_usage(void)
 	printf(" --udp-only                      | only match udp packets\n"); 
 	printf(" --udp-length <number>           | specifiy udp packets of only length <number>\n"); 
 	printf(" --udp-length-chomp <number>     | remove <number> bytes from the end of the UDP packet\n"); 
+	printf("\n");
 	printf("Hash the entire packet\n");
 	printf(" --full-packet                   | use entire packet contents for hash (.e.g no protocol)\n"); 
 	printf(" --full-packet-tcp-only          | use entire packet contents for hash but only for tcp packets\n"); 
@@ -1206,7 +1207,7 @@ static void print_usage(void)
 	printf(" --file-diff-nofcs-a             | file A has no FCS (ethernet crc) value\n"); 
 	printf(" --file-diff-nofcs-b             | file B has no FCS (ethernet crc) value\n"); 
 	printf(" --file-diff-missing-trace       | trace all packets that are missing\n"); 
-	printf(" --file-diff-latency-trace <number in ns> | trace packets that have latecn greather than <number>\n"); 
+	printf(" --file-diff-latency-trace <number in ns> | trace packets that have latency greather than <number>\n"); 
 	printf("\n");
 	printf("Diff 2 MAC address:");
 	printf(" --mac-diff                      | compare packets from 2 mac address in a single PCAP\n");
