@@ -35,6 +35,14 @@ typedef long long			s64;
 
 typedef unsigned __int128	u128;
 
+typedef union
+{
+	u128			d128;
+	u32				d32[4];
+	u64				d64[2];
+
+} u128_u;
+
 #define k1E9 1000000000ULL
 
 #define kKB(a) ( ((u64)a)*1024ULL)
@@ -269,7 +277,22 @@ static inline u64 swap64(const u64 a)
 {
 	return swap32(a>>32ULL) | ( (u64)swap32(a) << 32ULL); 
 }
+static inline u128 swap128(const u128 a)
+{
+	u128_u u0;
+	u128_u u1;
 
+	u0.d128 = a;
+	u1.d128 = a;
+
+	u64 d0 = swap64(u0.d64[0]);	
+	u64 d1 = swap64(u0.d64[1]);	
+
+	u0.d64[0] = d1; 
+	u0.d64[1] = d0; 
+
+	return u0.d128;
+}
 static inline u32 min32(const u32 a, const u32 b)
 {
 	return (a < b) ? a : b;

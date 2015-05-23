@@ -78,64 +78,80 @@ double TSC2Nano = 0;
 //---------------------------------------------------------------------------------------------
 // tunables
 
-static bool		s_EnablePacketTrace		= false;		// verbosely dump all packet traces
-static bool		s_EnableFullHash		= false;		// hash the entire packet 
-static bool		s_EnableFullHashTCP		= false;		// hash the entire packet only for tcp packets
-static bool		s_EnableFullHashUDP		= false;		// hash the entire packet only for udp packets
-static bool		s_EnableFullHashAll		= false;		// hash everything dont inspect 
-static u64		s_FullHashLengthMin		= 92;			// minimum packet size to attempt has on
+static bool		s_EnablePacketTrace		= false;			// verbosely dump all packet traces
+static bool		s_EnableFullHash		= false;			// hash the entire packet 
+static bool		s_EnableFullHashTCP		= false;			// hash the entire packet only for tcp packets
+static bool		s_EnableFullHashUDP		= false;			// hash the entire packet only for udp packets
+static bool		s_EnableFullHashAll		= false;			// hash everything dont inspect 
+static u64		s_FullHashLengthMin		= 92;				// minimum packet size to attempt has on
 
-static int		s_TCPLengthMin			= 64;			// minimum tcp payload length to consider
-static int		s_TCPLengthMax			= 9600;			// minimum tcp payload length to consider
-static bool		s_TCPEnable				= true;			// enable tcp packets to diff
+static bool		s_HashMatchMAC			= false;			// when searching for a node hit, ensure MAC address matches		
+															// helpful when doing full packet hashing, but need to disable
+															// when doing payload matching 
 
-static bool		s_UDPEnable				= true;			// enable udp packets to diff
+static int		s_TCPLengthMin				= 64;			// minimum tcp payload length to consider
+static int		s_TCPLengthMax				= 9600;			// minimum tcp payload length to consider
+static bool		s_TCPEnable					= true;			// enable tcp packets to diff
 
-static bool		s_EnableFileDiff		= false;		// special case of diff between 2 files
-static bool		s_EnableFileDiffTimeSync = true;	// attempt to time sync the two files for better packet matching
-static bool		s_EnableFileDiffStrict 	= false;		// means for a single hash node, only 2 entries can exist for it to sample.
-													// file A entry and file B entry
+static bool		s_UDPEnable					= true;			// enable udp packets to diff
+static u32		s_UDPLengthMin				= 16;			// set a default min udp length
+static u32		s_UDPLengthMax				= 8192;			// max length to be consider 
+static s32		s_UDPLengthChomp			= 0;			// chomp the udp packet length 
 
-static u64		s_TimeZoneOffset	= 0;			// local machines timezone offset
-static u64		s_HashOverflow		= 0;			// number of hash`s wich oveflow the packet count
-static u64		s_DroppedPkts		= 0;
+static bool		s_EnableFileDiff			= false;		// special case of diff between 2 files
+static bool		s_EnableFileDiffTimeSync 	= true;			// attempt to time sync the two files for better packet matching
+static bool		s_EnableFileDiffStrict 		= false;			// means for a single hash node, only 2 entries can exist for it to sample.
+															// file A entry and file B entry
 
-static double	s_FileDiffSum0		= 0;
-static double	s_FileDiffSum1		= 0;
-static double	s_FileDiffSum2		= 0;
+static u64		s_TimeZoneOffset			= 0;			// local machines timezone offset
+static u64		s_HashOverflow				= 0;			// number of hash`s wich oveflow the packet count
+static u64		s_DroppedPkts				= 0;
 
-// file diff hisogram 
-static u64*		s_FileDiffHisto		= NULL;			// histgram
-static s64		s_FileDiffHistoMin	= -1e6;			// delat min value 
-static s64		s_FileDiffHistoMax	=  1e6;			// delat max value 
-static s64		s_FileDiffHistoUnit	=  100;			// number of ns each hiso bucket occupies 
-static s64		s_FileDiffHistoCnt	=  0;			// number of buckets 
+static double	s_FileDiffSum0				= 0;
+static double	s_FileDiffSum1				= 0;
+static double	s_FileDiffSum2				= 0;
 
-static u64		s_FileDiffMissingA	= 0;			// number of packets mssing from PCAP A
-static u64		s_FileDiffMissingB	= 0;			// number of packets mssing from PCAP B
-static bool		s_FileDiffMissingTraceA = false;		// trace all packets that are missing
-static bool		s_FileDiffMissingTraceB = false;		// trace all packets that are missing
+static bool		s_MACDiffEnable				= false;		// use MAC for a/b selection
+static u128		s_MACDiff[2];								// source mac for A/B
+static u128		s_MACMask					= 0;			// value to mask packets first 128b worth
 
-static bool		s_FileDiffNoFCSFileA	= false;	// compensate for no FCS in file A
-static bool		s_FileDiffNoFCSFileB	= false;	// compensate for no FCS in file B
-static bool		s_FileDiffNoFCS			= true;		// strip FCS from hash 
+// latnecy histogram 
+static bool		s_LatencyHistoEnable		= false;		// if to print a latency histogram
+static u64*		s_LatencyHisto				= NULL;			// histgram
+static s64		s_LatencyHistoMin			= -1e6;			// delat min value 
+static s64		s_LatencyHistoMax			=  1e6;			// delat max value 
+static s64		s_LatencyHistoUnit			=  100;			// number of ns each hiso bucket occupies 
+static s64		s_LatencyHistoCnt			=  0;			// number of buckets 
 
-static bool		s_FileDiffStampAdjust	= false;	// adjust the timestamp based on first byte or last byte 
-static double	s_FileDiffTimeOffset[16];			// length scale toe move timestamp to start of packet 
-													// no adjust the scale is 0
-
-static s64		s_FileDiffLatencyTraceMin	= 1e9;		// latency threshold to start printing. set via cmd line arg
-
-static u64		s_HashMemory			= kMB(128);	// default hash memory size
-static bool		s_EnableMMAP			= true;		// disable use of mmap, use fread instead
-static bool		s_EnableTraceOverflow 	= false;	// dump overflow packet info to console
-static s64		s_TimeDeltaMaxNS		= 100e6;	// max time between packets before discarding
-
-static bool		s_EnableWTF			= false;		// dump everything	
-
-static bool		s_EnableLengthHisto		= false;	// display packet length histogram
+// packet length histogram 
+static bool		s_LengthHistoEnable			= false;		// if to print a length histogram
+static u64		s_LengthHistoUnit			= 1;			// size of output bucket
 static u64		s_LengthHisto[16*1024];
-static u64		s_MaxPackets			= (1ULL<<63);	// max number of packets to process
+
+static u64		s_FileDiffMissingA			= 0;			// number of packets mssing from PCAP A
+static u64		s_FileDiffMissingB			= 0;			// number of packets mssing from PCAP B
+static bool		s_FileDiffMissingTraceA 	= false;		// trace all packets that are missing
+static bool		s_FileDiffMissingTraceB 	= false;		// trace all packets that are missing
+
+static bool		s_FileDiffNoFCSFileA		= false;		// compensate for no FCS in file A
+static bool		s_FileDiffNoFCSFileB		= false;		// compensate for no FCS in file B
+static bool		s_FileDiffNoFCS				= true;			// strip FCS from hash 
+
+static bool		s_FileDiffStampAdjust		= false;		// adjust the timestamp based on first byte or last byte 
+static double	s_FileDiffTimeOffset[16];					// length scale toe move timestamp to start of packet 
+															// no adjust the scale is 0
+
+static s64		s_FileDiffLatencyTraceMin	= 1e12;			// latency threshold to start printing. set via cmd line arg
+
+static u64		s_HashMemory				= kMB(128);		// default hash memory size
+static bool		s_EnableMMAP				= true;			// disable use of mmap, use fread instead
+static bool		s_EnableTraceOverflow 		= false;		// dump overflow packet info to console
+static s64		s_TimeDeltaMaxNS			= 100e6;		// max time between packets before discarding
+
+static bool		s_EnableWTF					= false;		// dump everything	
+
+static bool		s_EnableLengthHisto			= false;		// display packet length histogram
+static u64		s_MaxPackets				= (1ULL<<63);	// max number of packets to process
 
 //---------------------------------------------------------------------------------------------
 // mmaps a pcap file in full
@@ -464,14 +480,19 @@ static void NodeOutput(HashNode_t* N)
 		TracePacket(N);
 	}
 
+	bool DoSample = false;
+
+	s64 TS0 	= 0x7fffffffffffffffULL; 
+	s32 FID0 	= -1;
+
+	s64 TS1 	= 0x7fffffffffffffffULL; 
+	s32 FID1 	= -1;
+
 	// special case of diffing 2 nearly identical files for latency deltas
 	if (s_EnableFileDiff)
 	{
-		s64 TS1 	= 0x7fffffffffffffffULL; 
-		u32 FID1 	= -1;
-
-		s64 TS0 	= N->TS[0];
-		u64 FID0 	= N->FID[0];
+		TS0 	= N->TS[0];
+		FID0 	= N->FID[0];
 
 		// find the first instance with FID0
 		for (int c =0; c < N->Cnt; c++)
@@ -512,17 +533,84 @@ static void NodeOutput(HashNode_t* N)
 
 		// conditions to sample packet 
 
-		bool DoSample 	= false;
 		if ((FID0 != -1) && (FID1 != -1))
 		{
 			// strict packet hashes
 			DoSample 		|= (N->Cnt == 2);	
 			DoSample 		|= ((!s_EnableFileDiffStrict) && (N->Cnt >= 2));
 		}
+	}
+	// diff within a file
+	else if (N->Cnt >= 2)
+	{
+		// search for the first + next packet
+		if (!s_MACDiffEnable)
+		{
+			// find the first instance 
+			for (int c =0; c < N->Cnt; c++)
+			{
+				if (c >= NODE_DEPTH) break;
 
+				if (N->TS[c] < TS0)
+				{
+					TS0 	= N->TS[c];
+					FID0 	= N->FID[0];
+				}
+			}
+
+			// find next instance 
+
+			for (int c =0; c < N->Cnt; c++)
+			{
+				if (c >= NODE_DEPTH) break;
+
+				if ((N->TS[c] != TS0) && (N->TS[c] < TS1))
+				{
+					TS1 	= N->TS[c];
+					FID1 	= N->FID[c];
+				}
+			}
+		}
+		else
+		{
+			// find the first instance 
+			for (int c =0; c < N->Cnt; c++)
+			{
+				if (c >= NODE_DEPTH) break;
+
+				u128* MAC = (u128*)(N->Pkt[c]+1);
+				if ((swap128(MAC[0]) & s_MACMask) != s_MACDiff[0]) continue;
+
+				if (N->TS[c] < TS0)
+				{
+					TS0 	= N->TS[c];
+					FID0 	= N->FID[0];
+				}
+			}
+
+			// find next instance 
+
+			for (int c =0; c < N->Cnt; c++)
+			{
+				if (c >= NODE_DEPTH) break;
+
+				u128* MAC = (u128*)(N->Pkt[c]+1);
+				if ((swap128(MAC[0]) & s_MACMask) != s_MACDiff[1]) continue;
+				if ((N->TS[c] != TS0) && (N->TS[c] < TS1))
+				{
+					TS1 	= N->TS[c];
+					FID1 	= N->FID[c];
+				}
+			}
+
+		}
+		DoSample = true;	
+	}
+
+	if (DoSample)
+	{
 		// sample time delta
-
-		if (DoSample)
+		if ((FID0 != -1) && (FID1 != -1) )
 		{
 			s64 dT 		= (TS1 - TS0);
 
@@ -534,51 +622,52 @@ static void NodeOutput(HashNode_t* N)
 
 			// center / align and slice dT for histogram 
 			s64 dTH 	= dT;
-			dTH 		= (dTH > s_FileDiffHistoMax) ? s_FileDiffHistoMax : dTH;
-			dTH 		= (dTH < s_FileDiffHistoMin) ? s_FileDiffHistoMin : dTH;
-			dTH			+= -s_FileDiffHistoMin;
+			dTH 		= (dTH > s_LatencyHistoMax) ? s_LatencyHistoMax : dTH;
+			dTH 		= (dTH < s_LatencyHistoMin) ? s_LatencyHistoMin : dTH;
+			dTH			+= -s_LatencyHistoMin;
 
 			// convert to histo buckets
 
-			s32 Index 	= dTH / s_FileDiffHistoUnit;
+			s32 Index 	= dTH / s_LatencyHistoUnit;
 			Index 		= (Index < 0) ? 0 : Index;
-			Index 		= (Index >= s_FileDiffHistoCnt) ? s_FileDiffHistoCnt -1 : Index;
+			Index 		= (Index >= s_LatencyHistoCnt) ? s_LatencyHistoCnt -1 : Index;
 
-			s_FileDiffHisto[Index]++;
+			s_LatencyHisto[Index]++;
 
 			if (labs(dT) > s_FileDiffLatencyTraceMin)
 			{
 				TracePacket(N);
 			}
-			//printf("%f ns %016llx %016llx\n", dT, TS0, TS1); 
-		}
-		// packet was not in both files
-		else
-		{
-			// update number of packets not seen in each file 
-			bool MissingA = false;
-			bool MissingB = false;
-			for (int i=0; i < N->Cnt; i++)
-			{
-				switch (N->FID[i])
-				{
-				case 0: 
-					s_FileDiffMissingA++; 
-					MissingA = true;
-					break;
-				case 1: 
-					s_FileDiffMissingB++; 
-					MissingB = true;
-					break;
-				default:
-						break;
-				}
-			}
-			if (MissingA && s_FileDiffMissingTraceA) TracePacket(N);
-			if (MissingB && s_FileDiffMissingTraceB) TracePacket(N);
-			s_DroppedPkts += N->Cnt;
+			//printf("%lli ns %016llx %016llx : %i %i\n", dT, TS0, TS1, FID0, FID1); 
 		}
 	}
+	// packet was dropped for some reason 
+	else
+	{
+		// update number of packets not seen in each file 
+		bool MissingA = false;
+		bool MissingB = false;
+		for (int i=0; i < N->Cnt; i++)
+		{
+			switch (N->FID[i])
+			{
+			case 0: 
+				s_FileDiffMissingA++; 
+				MissingA = true;
+				break;
+			case 1: 
+				s_FileDiffMissingB++; 
+				MissingB = true;
+				break;
+			default:
+					break;
+			}
+		}
+		if (MissingA && s_FileDiffMissingTraceA) TracePacket(N);
+		if (MissingB && s_FileDiffMissingTraceB) TracePacket(N);
+		s_DroppedPkts += N->Cnt;
+	}
+
 	// count packets with hash overflow 
 	if (N->Cnt >= NODE_DEPTH)
 	{
@@ -765,7 +854,7 @@ static void HashPacket(u32 FID, PCAPPacket_t* Pkt, u32 Type, u128 Hash, u32 Leng
 			{
 				if ((NS->Hash == Hash) && 
 					(NS->Type == Type) &&
-					(NS->MAC == MAC[0])
+					((!s_HashMatchMAC) | (NS->MAC == MAC[0]))
 				){
 					// can delete previous entries 
 					s64 dT = TS - NS->TS[0];
@@ -865,6 +954,10 @@ static void TCPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 		// generate payload hash  
 		u128 Hash = PayloadHash(TCPPayload, TCPLength); 
 		HashPacket(FID, Pkt, PKTTYPE_TCP, Hash, TCPLength);
+
+		// add to mac histogram 
+
+		s_LengthHisto[Pkt->Length]++;
 	}
 	//printf("tcp %i %i %x %x %x : %08x\n", swap16(TCP->PortSrc), swap16(TCP->PortDst), TCPOffset, sizeof(TCPHeader_t)/4, TCP->Flags, TCPPayload[0]); 
 }
@@ -877,17 +970,21 @@ static void UDPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 
 	UDPHeader_t* UDP 	= (UDPHeader_t*)( ((u8*)IP4) + IPOffset);
 	u8* Payload			= (u8*)(UDP + 1); 
-	u32 Length 			= swap16(UDP->Length);
+	u32 Length 			= swap16(UDP->Length) + s_UDPLengthChomp;
 
 	if (Length > 16*1024)
 	{
 		fprintf(stderr, "UDP length bogus %i\n", Length);
 		return;
 	}
-	
-	// generate payload hash  
-	u128 Hash = PayloadHash(Payload, Length); 
-	HashPacket(FID, Pkt, PKTTYPE_UDP, Hash, Length);
+	if ((Length >= s_UDPLengthMin) && (Length <= s_UDPLengthMax))
+	{
+		// generate payload hash  
+		u128 Hash = PayloadHash(Payload, Length); 
+		HashPacket(FID, Pkt, PKTTYPE_UDP, Hash, Length);
+
+		s_LengthHisto[Length]++;
+	}
 }
 
 //---------------------------------------------------------------------------------------------
@@ -978,7 +1075,7 @@ static inline void ProcessHashPayload(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* P
 
 //---------------------------------------------------------------------------------------------
 
-static void PrintFileDiffHisto(PCAPFile_t* PCAPFile[])
+static void PrintLatencyHisto(u32 PCAPCnt, PCAPFile_t* PCAPFile[])
 {
 	double Mean 	= s_FileDiffSum1 / s_FileDiffSum0;
 	double Top 		= s_FileDiffSum0 * s_FileDiffSum2 - s_FileDiffSum1 * s_FileDiffSum1;
@@ -991,35 +1088,35 @@ static void PrintFileDiffHisto(PCAPFile_t* PCAPFile[])
 	printf("\n");
 
 	printf("Histogram\n");
-	printf("  Min     : %10lli ns\n", s_FileDiffHistoMin);
-	printf("  Max     : %10lli ns\n", s_FileDiffHistoMax);
-	printf("  Unit    : %10lli ns\n", s_FileDiffHistoUnit);
+	printf("  Min     : %10lli ns\n", s_LatencyHistoMin);
+	printf("  Max     : %10lli ns\n", s_LatencyHistoMax);
+	printf("  Unit    : %10lli ns\n", s_LatencyHistoUnit);
 	printf("\n");
 
 	// output histogram
-	u32 HMin 	= s_FileDiffHistoCnt-1;
+	u32 HMin 	= s_LatencyHistoCnt-1;
 	u32 HMax 	= 0;
 	u64 Max		= 0; 
 	u64 Total	= 0;
-	for (int i=0; i < s_FileDiffHistoCnt; i++)
+	for (int i=0; i < s_LatencyHistoCnt; i++)
 	{
-		if (s_FileDiffHisto[i] == 0) continue; 
+		if (s_LatencyHisto[i] == 0) continue; 
 
 		HMin = (HMin > i) ? i : HMin;
 		HMax = (HMax < i) ? i : HMax;
-		Max = (s_FileDiffHisto[i] > Max) ? s_FileDiffHisto[i] : Max;
-		Total += s_FileDiffHisto[i];
+		Max = (s_LatencyHisto[i] > Max) ? s_LatencyHisto[i] : Max;
+		Total += s_LatencyHisto[i];
 	}
 	u64 Sum = 0;
 	for (int i=HMin; i <= HMax; i++)
 	{
-		Sum += s_FileDiffHisto[i]; 
-		s64 dT = s_FileDiffHistoMin + i * s_FileDiffHistoUnit;
-		double Pct = (double)s_FileDiffHisto[i] / (double)Max;
-		printf("%8lli ns : %12lli %.4f (%.4f) : ", dT, s_FileDiffHisto[i], Pct, Sum / (double)Total);
+		Sum += s_LatencyHisto[i]; 
+		s64 dT = s_LatencyHistoMin + i * s_LatencyHistoUnit;
+		double Pct = (double)s_LatencyHisto[i] / (double)Max;
+		printf("%8lli ns : %12lli %.4f (%.4f) : ", dT, s_LatencyHisto[i], Pct, Sum / (double)Total);
 
-		int StarCnt = 100*Pct;
-		if ((s_FileDiffHisto[i] > 0) && StarCnt == 0) StarCnt = 1;
+		int StarCnt = 50*Pct;
+		if ((s_LatencyHisto[i] > 0) && StarCnt == 0) StarCnt = 1;
 
 		for (int s=0; s < StarCnt; s++) printf("*");
 
@@ -1027,9 +1124,12 @@ static void PrintFileDiffHisto(PCAPFile_t* PCAPFile[])
 	}
 	printf("\n");
 
-	printf("Missing Packets:\n");
-	printf("  [%s] packets not in [%s] : %lli Pkts\n", PCAPFile[0]->Path, PCAPFile[1]->Path, s_FileDiffMissingA);  
-	printf("  [%s] packets not in [%s] : %lli Pkts\n", PCAPFile[1]->Path, PCAPFile[0]->Path, s_FileDiffMissingB);  
+	if (PCAPCnt > 2)
+	{
+		printf("Missing Packets:\n");
+		printf("  [%s] packets not in [%s] : %lli Pkts\n", PCAPFile[0]->Path, PCAPFile[1]->Path, s_FileDiffMissingA);  
+		printf("  [%s] packets not in [%s] : %lli Pkts\n", PCAPFile[1]->Path, PCAPFile[0]->Path, s_FileDiffMissingB);  
+	}
 }
 
 //---------------------------------------------------------------------------------------------
@@ -1038,29 +1138,35 @@ static void PrintLengthHisto(void)
 {
 	u64 MaxCnt = 0;
 	u64 TotalSample = 0;
-	for (int i=0; i < 16*1024; i++)
+	for (int i=0; i < 16*1024; i += s_LengthHistoUnit)
 	{
-		MaxCnt = s_LengthHisto[i] > MaxCnt ?  s_LengthHisto[i] : MaxCnt;
-		TotalSample += s_LengthHisto[i];
+		u64 Cnt = 0;
+		for (int j=0; j < s_LengthHistoUnit; j++)
+		{
+			Cnt += s_LengthHisto[i];
+		}
+
+		MaxCnt = Cnt > MaxCnt ?  Cnt : MaxCnt;
+		TotalSample += Cnt; 
 	}
 
-
 	u64 Sum = 0;
-	for (int i=0; i < 16*1024; i++)
+	for (int i=0; i < 1500; i+= s_LengthHistoUnit)
 	{
-		if (s_LengthHisto[i] != 0)
+		u64 Cnt = 0;
+		for (int j=0; j < s_LengthHistoUnit; j++)
 		{
-			Sum += s_LengthHisto[i];
-
-			printf("%4i B : %12lli (%.4f) : ", i, s_LengthHisto[i], Sum / (double)TotalSample);
-
-			double Pct = (double)s_LengthHisto[i] / (double)MaxCnt;
-			int StarCnt = 100.0*Pct;
-			if ((s_LengthHisto[i] > 0) && StarCnt == 0) StarCnt = 1;
-			for (int s=0; s < StarCnt; s++) printf("*");
-
-			printf("\n");
+			Cnt += s_LengthHisto[i];
 		}
+		Sum += Cnt;
+		printf("%4i B : %12lli (%.4f) : ", i, Cnt, Sum / (double)TotalSample);
+
+		double Pct = (double)Cnt / (double)MaxCnt;
+		int StarCnt = 100.0*Pct;
+		if ((Cnt > 0) && StarCnt == 0) StarCnt = 1;
+		for (int s=0; s < StarCnt; s++) printf("*");
+
+		printf("\n");
 	}
 }
 
@@ -1068,7 +1174,7 @@ static void PrintLengthHisto(void)
 
 static void print_usage(void)
 {
-	printf("pcap_diff: <pcap A> <pcap B>\n");
+	printf("pcap_latency_analyzer: <pcap A> <pcap B>\n");
 	printf("\n");
 	printf("Version: %s %s\n", __DATE__, __TIME__);
 	printf("Contact: support at fmad.io\n"); 
@@ -1076,24 +1182,25 @@ static void print_usage(void)
 	printf("Options:\n");
 	printf(" --packet-trace            | write each packet events to stdout\n");
 	printf(" --length-histo            | print packet length histogram\n");
+	printf(" --latency-histo           | print latency histogram \n");
 	printf(" --hash-memory             | (int MB) amount of memory to use for hashing. default 128MB\n");
 	printf(" --disable-mmap            | use fread not mmap of the pcap files\n"); 
 	printf(" --packet-time-delta-max   | reset time between new and old packets with the same hash.\n"); 
+	printf(" --packet-max <number>     | maximum number of packets to process\n");
 	printf("\n");
 	printf(" --tcp-length <number>     | filter tcp packets to include only payload length of <number>\n");
 	printf(" --tcp-only                | only match tcp packets\n"); 
 	printf(" --udp-only                | only match udp packets\n"); 
+	printf(" --udp-length <number>     | specifiy udp packets of only length <number>\n"); 
+	printf(" --udp-length-chomp <number> | remove <number> bytes from the end of the UDP packet\n"); 
 	printf("Hash the entire packet\n");
 	printf(" --full-packet             | use entire packet contents for hash (.e.g no protocol)\n"); 
 	printf(" --full-packet-tcp-only    | use entire packet contents for hash but only for tcp packets\n"); 
 	printf(" --full-packet-udp-only    | use entire packet contents for hash but only for udp packets\n"); 
 	printf("\n");
-	printf("Compare 2 PCAP files:");
+	printf("Diff 2 PCAP files:");
 	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
 	printf(" --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)\n");
-	printf(" --file-diff-min           | minimum time delta for histogram. default -1e6 ns\n"); 
-	printf(" --file-diff-max           | maximum time delta for histogram. default 1e6 ns\n"); 
-	printf(" --file-diff-unit          | duration of a single histogram slot. default 100ns\n"); 
 	printf(" --file-diff-no-timesync   | do not attempt to time sync the two files. reads 1MB chunks at a time\n");
 	printf(" --file-diff-strict        | only matches with two entries in a hash node will be sampled\n"); 
 	printf(" --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value\n"); 
@@ -1101,9 +1208,53 @@ static void print_usage(void)
 	printf(" --file-diff-missing-trace | trace all packets that are missing\n"); 
 	printf(" --file-diff-latency-trace <number in ns> | trace packets that have latecn greather than <number>\n"); 
 	printf("\n");
-	printf(" --ts-last-byte-a         | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
-	printf(" --ts-last-byte-b         | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
+	printf("Diff 2 MAC address:");
+	printf(" --mac-diff                      | compare packets from 2 mac address in a single PCAP\n");
+	printf(" --mac-diff-a 00:11:22:33:44:55  | specify MAC address A\n"); 
+	printf(" --mac-diff-b 66:77:88:99:aa:bb  | specify MAC address B\n"); 
 	printf("\n");
+	printf("Latency histogram shaping\n");
+	printf(" --latency-histo-min             | minimum time delta for histogram. default -1e6 ns\n"); 
+	printf(" --latency-histo-max             | maximum time delta for histogram. default 1e6 ns\n"); 
+	printf(" --latency-histo-unit            | duration of a single histogram slot. default 100ns\n"); 
+
+	printf("\n");
+	printf(" --ts-last-byte-a                | adjust timestamp of first file A from last byte to first byte (assumes 10G)\n"); 
+	printf(" --ts-last-byte-b                | adjust timestamp of first file B from last byte to first byte (assumes 10G)\n"); 
+	printf("\n");
+}
+
+static u64 ParseMAC(char* sMAC)
+{
+	u64 MAC = 0;	
+	u64 iMAC[6];
+	for (int j=0; j < 6; j++) 
+	{
+		char c = sMAC[j*3 + 0];
+		u8 m0 = 0;
+		if ((c >= '0') && (c <= '9')) m0 = c - '0';
+		if ((c >= 'a') && (c <= 'f')) m0 = 10 + c - 'a';
+		if ((c >= 'A') && (c <= 'F')) m0 = 10 + c - 'A';
+
+		c = sMAC[j*3 + 1];
+		u8 m1 = 0;
+		if ((c >= '0') && (c <= '9')) m1 = c - '0';
+		if ((c >= 'a') && (c <= 'f')) m1 = 10 + c - 'a';
+		if ((c >= 'A') && (c <= 'F')) m1 = 10 + c - 'A';
+
+		iMAC[j] = (m0<<4) | m1;
+		fprintf(stderr, "%02llx ", iMAC[j]); 
+	}
+	fprintf(stderr, " ass\n");
+
+	MAC = 	(iMAC[0]<<(8*5ULL)) | 
+		(iMAC[1]<<(8*4ULL)) | 
+		(iMAC[2]<<(8*3ULL)) | 
+		(iMAC[3]<<(8*2ULL)) | 
+		(iMAC[4]<<(8*1ULL)) | 
+		(iMAC[5]<<(8*0ULL));
+
+	return MAC;
 }
 
 //---------------------------------------------------------------------------------------------
@@ -1137,12 +1288,35 @@ int main(int argc, char* argv[])
 				fprintf(stderr, "TCP Length == %i\n", s_TCPLengthMin);
 				i += 1;
 			}
+			// specifiy an exact udp length to use 
+			else if (strcmp(argv[i], "--udp-length") == 0)
+			{
+				s_UDPLengthMin = atoi(argv[i+1]);	
+				s_UDPLengthMax = atoi(argv[i+1]);	
+
+				fprintf(stderr, "UDP Length == %i\n", s_UDPLengthMin);
+				i += 1;
+			}
+			// chomp the udp length 
+			else if (strcmp(argv[i], "--udp-length-chomp") == 0)
+			{
+				s_UDPLengthChomp = -atoi(argv[i+1]);	
+				fprintf(stderr, "UDP Length Chomp == %i\n", s_UDPLengthChomp);
+				i += 1;
+			}
 			// only check tcp packets
 			else if (strcmp(argv[i], "--tcp-only") == 0)
 			{
 				s_TCPEnable = true;
 				s_UDPEnable = false;
 			}
+			// only check UDP packets
+			else if (strcmp(argv[i], "--udp-only") == 0)
+			{
+				s_TCPEnable = false;
+				s_UDPEnable = true;
+			}
+
 			// full packet hash 
 			else if (strcmp(argv[i], "--full-packet") == 0)
 			{
@@ -1152,40 +1326,50 @@ int main(int argc, char* argv[])
 				s_EnableFullHashAll = true;
 				s_EnableFullHashTCP = true;
 				s_EnableFullHashUDP = true;
+				s_HashMatchMAC		= true;
 			}
 			else if (strcmp(argv[i], "--full-packet-tcp-only") == 0)
 			{
 				s_EnableFullHash 	= true;
 				s_EnableFullHashTCP = true;
 				s_EnableFullHashUDP = false;
+				s_HashMatchMAC		= true;
 			}
 			else if (strcmp(argv[i], "--full-packet-udp-only") == 0)
 			{
 				s_EnableFullHash 	= true;
 				s_EnableFullHashTCP = false;
 				s_EnableFullHashUDP = true;
+				s_HashMatchMAC		= true;
 			}
 			// specal case of 2 pcap diff. compare first hash entrys between files
 			else if (strcmp(argv[i], "--file-diff") == 0)
 			{
 				s_EnableFileDiff 	= true;
 			}
-			// min file diff position 
-			else if (strcmp(argv[i], "--file-diff-min") == 0)
+			// output latency histo 
+			else if (strcmp(argv[i], "--latency-histo") == 0)
 			{
-				s_FileDiffHistoMin	= atoi(argv[i+1]); 
+				fprintf(stderr, "outputing latency histogram\n");
+				s_LatencyHistoEnable = true;
+			}
+
+			// min file diff position 
+			else if (strcmp(argv[i], "--latency-histo-min") == 0)
+			{
+				s_LatencyHistoMin	= atoi(argv[i+1]); 
 				i+= 1;
 			}
 			// max file diff position 
-			else if (strcmp(argv[i], "--file-diff-max") == 0)
+			else if (strcmp(argv[i], "--latency-histo-max") == 0)
 			{
-				s_FileDiffHistoMax	= atoi(argv[i+1]);
+				s_LatencyHistoMax	= atoi(argv[i+1]);
 				i+= 1;
 			}
 			// unit size of each sample 
-			else if (strcmp(argv[i], "--file-diff-unit") == 0)
+			else if (strcmp(argv[i], "--latency-histo-unit") == 0)
 			{
-				s_FileDiffHistoUnit= atoi(argv[i+1]);
+				s_LatencyHistoUnit= atoi(argv[i+1]);
 				i+= 1;
 			}
 			// use pure byte based file synching 
@@ -1228,6 +1412,32 @@ int main(int argc, char* argv[])
 
 				fprintf(stderr, "enabling file diff latency trace with threshold of %lli ns\n", s_FileDiffLatencyTraceMin);
 			}
+			else if (strcmp(argv[i], "--mac-diff") == 0)
+			{
+				fprintf(stderr, "comparing MACs\n");
+				s_MACDiffEnable = true;
+
+				s_MACMask 	= 0xffffffffffffULL;
+				s_MACMask	= (s_MACMask << (8ULL*4));
+			}
+			else if (strcmp(argv[i], "--mac-diff-a") == 0)
+			{
+				u64 MAC = ParseMAC(argv[i+1]);	
+		
+				fprintf(stderr, "diff A MACs %016llx\n", MAC);
+				s_MACDiff[0] = (u128)MAC<<(4*8ULL); 
+				i++;
+			}
+			else if (strcmp(argv[i], "--mac-diff-b") == 0)
+			{
+				u64 MAC = ParseMAC(argv[i+1]);	
+		
+				fprintf(stderr, "diff B MACs %016llx\n", MAC);
+				s_MACDiff[1] = (u128)MAC<<(4*8ULL); 
+				i++;
+			}
+
+
 			// adjust file A timestamp to start of packet (from end of packet) 
 			else if (strcmp(argv[i], "--ts-last-byte-a") == 0)
 			{
@@ -1272,8 +1482,8 @@ int main(int argc, char* argv[])
 			}
 			else if (strcmp(argv[i], "--packet-max") == 0)
 			{
-				fprintf(stderr, "setting maximum number of packets to processn");
 				s_MaxPackets = atoll(argv[i+1]); 
+				fprintf(stderr, "setting maximum number of packets to %lli\n", s_MaxPackets);
 				i+= 1;
 			}
 			else
@@ -1310,6 +1520,7 @@ int main(int argc, char* argv[])
 	// open pcap diff files
 
 	PCAPFile_t* PCAPFile[16];
+	memset(PCAPFile, 0, sizeof(PCAPFile));
 	for (int i=0; i < FileNameListPos; i++)
 	{
 		PCAPFile[i] = OpenPCAP(FileNameList[i]);	
@@ -1338,9 +1549,9 @@ int main(int argc, char* argv[])
 
 	// file only histogram
 
-	s_FileDiffHistoCnt 	= (s_FileDiffHistoMax  - s_FileDiffHistoMin) /  s_FileDiffHistoUnit;
-	s_FileDiffHisto 	= (u64*)malloc(sizeof(u64) *  s_FileDiffHistoCnt);
-	memset(s_FileDiffHisto, 0, sizeof(u64) * s_FileDiffHistoCnt);
+	s_LatencyHistoCnt 	= (s_LatencyHistoMax  - s_LatencyHistoMin) /  s_LatencyHistoUnit;
+	s_LatencyHisto 	= (u64*)malloc(sizeof(u64) *  s_LatencyHistoCnt);
+	memset(s_LatencyHisto, 0, sizeof(u64) * s_LatencyHistoCnt);
 
 	// packet length histogram
 	memset(s_LengthHisto, 0, sizeof(s_LengthHisto));
@@ -1458,8 +1669,8 @@ int main(int argc, char* argv[])
 					s_HashOverflow,
 					Min
 			);
-			if (s_FileDiffSum0 > s_MaxPackets) break;
 		}
+		if (TotalPkt > s_MaxPackets) break;
 	}
 
 	//fProfile_Dump(15);
@@ -1486,7 +1697,7 @@ int main(int argc, char* argv[])
 	printf("\n");
 
 	if (s_EnableLengthHisto) PrintLengthHisto();
-	if (s_EnableFileDiff) PrintFileDiffHisto(PCAPFile);
+	if (s_LatencyHistoEnable) PrintLatencyHisto(FileNameListPos, PCAPFile);
 
 	printf("Total : %lli\n", s_HashOverflow + s_DroppedPkts + (u64)s_FileDiffSum0);
 
