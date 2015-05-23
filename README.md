@@ -81,6 +81,6 @@ $ ./pcap_latency_analyzer  capture.pcap  --mac-diff --mac-diff-a 00:11:22:33:44:
 
 ### Support 
 
-This tool is part of the **fmadio 10G sniffer appliance**, more information can be found at http://fmad.io 
+This tool is part of the fmadio **10G sniffer appliance**, more information can be found at http://fmad.io 
 
 Contact us for any bugs/patches/requests send a mail to: support at fmad.io 
