@@ -14,33 +14,35 @@ It works by generating a 128b DEK hash of the entire packet (--full-packet) or j
 Command line options 
 
 ```
+
 Options:
- --packet-trace            | write each packet events to stdout
- --length-histo            | print packet length histogram
- --latency-histo           | print latency histogram
- --hash-memory             | (int MB) amount of memory to use for hashing. default 128MB
- --disable-mmap            | use fread not mmap of the pcap files
- --packet-time-delta-max   | reset time between new and old packets with the same hash.
- --packet-max <number>     | maximum number of packets to process
+ --packet-trace                  | write each packet events to stdout
+ --length-histo                  | print packet length histogram
+ --latency-histo                 | print latency histogram
+ --hash-memory                   | (int MB) amount of memory to use for hashing. default 128MB
+ --disable-mmap                  | use fread not mmap of the pcap files
+ --packet-time-delta-max         | reset time between new and old packets with the same hash.
+ --packet-max <number>           | maximum number of packets to process
 
- --tcp-length <number>     | filter tcp packets to include only payload length of <number>
- --tcp-only                | only match tcp packets
- --udp-only                | only match udp packets
- --udp-length <number>     | specifiy udp packets of only length <number>
- --udp-length-chomp <number> | remove <number> bytes from the end of the UDP packet
+ --tcp-length <number>           | filter tcp packets to include only payload length of <number>
+ --tcp-only                      | only match tcp packets
+ --udp-only                      | only match udp packets
+ --udp-length <number>           | specifiy udp packets of only length <number>
+ --udp-length-chomp <number>     | remove <number> bytes from the end of the UDP packet
+
 Hash the entire packet
- --full-packet             | use entire packet contents for hash (.e.g no protocol)
- --full-packet-tcp-only    | use entire packet contents for hash but only for tcp packets
- --full-packet-udp-only    | use entire packet contents for hash but only for udp packets
+ --full-packet                   | use entire packet contents for hash (.e.g no protocol)
+ --full-packet-tcp-only          | use entire packet contents for hash but only for tcp packets
+ --full-packet-udp-only          | use entire packet contents for hash but only for udp packets
 
-Diff 2 PCAP files: --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)
- --file-diff               | special mode of comparing packets between 2 files (instead of within the same file)
- --file-diff-no-timesync   | do not attempt to time sync the two files. reads 1MB chunks at a time
- --file-diff-strict        | only matches with two entries in a hash node will be sampled
- --file-diff-nofcs-a       | file A has no FCS (ethernet crc) value
- --file-diff-nofcs-b       | file B has no FCS (ethernet crc) value
- --file-diff-missing-trace | trace all packets that are missing
- --file-diff-latency-trace <number in ns> | trace packets that have latecn greather than <number>
+Diff 2 PCAP files: --file-diff                     | special mode of comparing packets between 2 files (instead of within the same file)
+ --file-diff                     | special mode of comparing packets between 2 files (instead of within the same file)
+ --file-diff-no-timesync         | do not attempt to time sync the two files. reads 1MB chunks at a time
+ --file-diff-strict              | only matches with two entries in a hash node will be sampled
+ --file-diff-nofcs-a             | file A has no FCS (ethernet crc) value
+ --file-diff-nofcs-b             | file B has no FCS (ethernet crc) value
+ --file-diff-missing-trace       | trace all packets that are missing
+ --file-diff-latency-trace <number in ns> | trace packets that have latency greather than <number>
 
 Diff 2 MAC address: --mac-diff                      | compare packets from 2 mac address in a single PCAP
  --mac-diff-a 00:11:22:33:44:55  | specify MAC address A
