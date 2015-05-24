@@ -82,6 +82,8 @@ $ ./pcap_latency_analyzer  capture.pcap  --mac-diff --mac-diff-a 00:11:22:33:44:
 
 Example output of packet latency analysis
 
+```
+
 pacp_diff --file-diff-udp-only --latency-histo --latency-histo-unit 100 ./fmadio-10g-capture-A.pcap
 ./fmadio-10g-capture-B.pcap
 .
@@ -128,6 +130,7 @@ pacp_diff --file-diff-udp-only --latency-histo --latency-histo-unit 100 ./fmadio
 10600 ns : 0.0005 (1.0000) : *
 10700 ns : 0.0000 (1.0000) : *
 
+```
 
 ### Support 
 
