@@ -1209,7 +1209,7 @@ static void print_usage(void)
 	printf(" --file-diff-missing-trace       | trace all packets that are missing\n"); 
 	printf(" --file-diff-latency-trace <number in ns> | trace packets that have latency greather than <number>\n"); 
 	printf("\n");
-	printf("Diff 2 MAC address:");
+	printf("Diff 2 MAC address:\n");
 	printf(" --mac-diff                      | compare packets from 2 mac address in a single PCAP\n");
 	printf(" --mac-diff-a 00:11:22:33:44:55  | specify MAC address A\n"); 
 	printf(" --mac-diff-b 66:77:88:99:aa:bb  | specify MAC address B\n"); 
