@@ -1,6 +1,6 @@
 # pcap_latency_analyzer
 
-![Alt text](http://fmad.io/analytics/logo.png "fmadio logo")
+![Alt text](http://fmad.io/analytics/logo_latency_analyzer.png "fmadio latency analyzer logo")
 
 pcap_diff is a simple **packet analyzer** tool used to extract time difference between the same packets in 2 different pcap files. 
 
