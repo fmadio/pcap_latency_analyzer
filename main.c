@@ -92,6 +92,7 @@ static bool		s_HashMatchMAC			= false;			// when searching for a node hit, ensur
 static int		s_TCPLengthMin				= 64;			// minimum tcp payload length to consider
 static int		s_TCPLengthMax				= 9600;			// minimum tcp payload length to consider
 static bool		s_TCPEnable					= true;			// enable tcp packets to diff
+static int		s_TCPPayloadMax				= 9600;			// max TCP payload to hash. useful for sliced packets
 
 static bool		s_UDPEnable					= true;			// enable udp packets to diff
 static u32		s_UDPLengthMin				= 16;			// set a default min udp length
@@ -838,9 +839,8 @@ static void HashPacket(u32 FID, PCAPPacket_t* Pkt, u32 Type, u128 Hash, u32 Leng
 {
 	HashNode_t* N 	= NULL;
 
-	u64 TS = PCAPTimeStamp(FID, Pkt); 
-
-	u128* MAC = (u128*)(Pkt+1);
+	u64 TS 		= PCAPTimeStamp(FID, Pkt); 
+	u128* MAC 	= (u128*)(Pkt+1);
 
 	// search for hash
 	bool NodeHit = false;	
@@ -951,12 +951,13 @@ static void TCPProcess(u32 FID, PCAPPacket_t* Pkt, fEther_t* E, IP4Header_t* IP4
 
 	if ((TCPLength >= s_TCPLengthMin)  && (TCPLength <= s_TCPLengthMax))
 	{
+		if (TCPLength > s_TCPPayloadMax) TCPLength = s_TCPPayloadMax;
+
 		// generate payload hash  
 		u128 Hash = PayloadHash(TCPPayload, TCPLength); 
 		HashPacket(FID, Pkt, PKTTYPE_TCP, Hash, TCPLength);
 
 		// add to mac histogram 
-
 		s_LengthHisto[Pkt->Length]++;
 	}
 	//printf("tcp %i %i %x %x %x : %08x\n", swap16(TCP->PortSrc), swap16(TCP->PortDst), TCPOffset, sizeof(TCPHeader_t)/4, TCP->Flags, TCPPayload[0]); 
@@ -1057,6 +1058,7 @@ static inline void ProcessHashFull(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* Pkt,
 static inline void ProcessHashPayload(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* Pkt, u64 TS)
 {
 	fEther_t* E = PCAPETHHeader(Pkt);
+
 	switch (swap16(E->Proto))
 	{
 	case ETHER_PROTO_IPV4:
@@ -1089,6 +1091,7 @@ static inline void ProcessHashPayload(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* P
 
 		IP4Header_t* IP4 	= (IP4Header_t*)(MPLS + 1); 
 		u32 IPOffset 		= (IP4->Version & 0x0f)*4; 
+
 		switch (IP4->Proto)
 		{
 		case IPv4_PROTO_TCP: TCPProcess(FID, Pkt, E, IP4, IPOffset); break;
@@ -1216,6 +1219,7 @@ static void print_usage(void)
 	printf(" --packet-max <number>           | maximum number of packets to process\n");
 	printf("\n");
 	printf(" --tcp-length <number>           | filter tcp packets to include only payload length of <number>\n");
+	printf(" --tcp-length-chomp <number>     | set max tcp payload hash to be of length <number>. for packet slicing\n");
 	printf(" --tcp-only                      | only match tcp packets\n"); 
 	printf(" --udp-only                      | only match udp packets\n"); 
 	printf(" --udp-length <number>           | specifiy udp packets of only length <number>\n"); 
@@ -1325,6 +1329,13 @@ int main(int argc, char* argv[])
 				fprintf(stderr, "UDP Length == %i\n", s_UDPLengthMin);
 				i += 1;
 			}
+			// chomp tcp length 
+			else if (strcmp(argv[i], "--tcp-length-chomp") == 0)
+			{
+				s_TCPPayloadMax = atoi(argv[i+1]);	
+				fprintf(stderr, "TCP Length Chomp == %i\n", s_TCPPayloadMax);
+				i += 1;
+			}
 			// chomp the udp length 
 			else if (strcmp(argv[i], "--udp-length-chomp") == 0)
 			{
@@ -1381,7 +1392,6 @@ int main(int argc, char* argv[])
 				fprintf(stderr, "outputing latency histogram\n");
 				s_LatencyHistoEnable = true;
 			}
-
 			// min file diff position 
 			else if (strcmp(argv[i], "--latency-histo-min") == 0)
 			{
@@ -1621,7 +1631,6 @@ int main(int argc, char* argv[])
 				}
 
 				PCAP->TS = PCAPTimeStamp(FID, Pkt);
-
 				// want to increment file 0 by 128KB each time, but want 
 				// the other file to attempt time sync with file0. this maximizes
 				// the hash cache
