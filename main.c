@@ -1070,6 +1070,33 @@ static inline void ProcessHashPayload(u32 FID, PCAPFile_t* PCAP, PCAPPacket_t* P
 		}
 	}
 	break;
+
+	case ETHER_PROTO_MPLS:
+	{
+		MPLS_t* MPLS 		= (MPLS_t*)(E + 1);
+
+		// strip all the tags
+		for (int i=0; i < 8; i++)
+		{
+			u32 d 		= swap32(*((u32*)MPLS));
+			u32 Label 	= (d >> 12)  & 0xfffff;
+			u32 EOS 	= (d >> 8)  & 0x1;
+			//printf("MPLS %i Label:%i %08x\n", EOS, Label, d);	
+
+			if (EOS) break;
+			MPLS += 1;
+		}
+
+		IP4Header_t* IP4 	= (IP4Header_t*)(MPLS + 1); 
+		u32 IPOffset 		= (IP4->Version & 0x0f)*4; 
+		switch (IP4->Proto)
+		{
+		case IPv4_PROTO_TCP: TCPProcess(FID, Pkt, E, IP4, IPOffset); break;
+		case IPv4_PROTO_UDP: UDPProcess(FID, Pkt, E, IP4, IPOffset); break;
+		}
+
+	}
+	break;
 	}
 }
 

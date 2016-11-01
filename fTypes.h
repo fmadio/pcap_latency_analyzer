@@ -446,6 +446,17 @@ typedef struct
 } fEther_t;
 
 #define ETHER_PROTO_IPV4		0x0800 
+#define ETHER_PROTO_MPLS		0x8847 
+
+typedef struct
+{
+	u32			TTL		: 8;	
+	u32			BOS		: 1;	
+	u32			TC		: 3;	
+	u32			Label	: 20;	
+
+} __attribute__((packed)) MPLS_t;
+
 typedef struct
 {
 	union
